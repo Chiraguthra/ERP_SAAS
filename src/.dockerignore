@@ -1,0 +1,29 @@
+# Dependencies and build artifacts
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+venv
+env
+
+# Git and IDE
+.git
+.gitignore
+.replit
+.local
+
+# Env (use .env.example as template; real .env not in image)
+.env
+*.env
+!.env.example
+
+# SQLite and local data (use Postgres in Docker)
+*.db
+retailer.db
+
+# Docs and misc
+*.md
+!README.md
+attached_assets
+replit.md

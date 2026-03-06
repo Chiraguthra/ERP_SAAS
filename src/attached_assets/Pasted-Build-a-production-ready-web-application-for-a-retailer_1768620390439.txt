@@ -1,0 +1,83 @@
+Build a production-ready web application for a retailer to manage the complete order lifecycle and perform business analysis.
+
+TECH STACK
+- Backend: Python with FastAPI
+- Frontend: React (Vite) or modern JavaScript
+- Database: PostgreSQL
+- ORM: SQLAlchemy
+- Auth: JWT-based authentication
+- API Docs: Swagger (/docs)
+
+FUNCTIONAL REQUIREMENTS
+1. User Roles
+   - Admin (Retailer)
+   - Optional Staff role
+
+2. Order Management
+   - Order lifecycle: Draft → Confirmed → Packed → Shipped → Delivered → Cancelled
+   - Create, update, and view orders
+   - Track order status history with timestamps
+   - Order items linked to products
+   - Inventory auto-update on order creation and completion
+
+3. Product & Customer Management
+   - CRUD APIs for products and customers
+   - Inventory quantity tracking
+   - Prevent orders if stock is insufficient
+
+4. Analytics & Reporting
+   - Dashboard with KPIs:
+     - Total orders
+     - Total revenue
+     - Average order value
+     - Order completion time
+   - Order funnel analysis by status
+   - Top-selling products and top customers
+   - Analytics APIs with date-range filters
+   - Charts using Chart.js or Recharts
+
+BACKEND DETAILS
+- FastAPI project with clean modular structure:
+  - routers, models, schemas, services, db
+- Pydantic for validation
+- Centralized exception handling
+- Background task for analytics aggregation (optional)
+- Environment-based configuration using .env
+
+DATABASE SCHEMA
+- users
+- products
+- customers
+- orders
+- order_items
+- inventory_logs
+- order_status_history
+- Proper indexing on order_id, status, created_at
+- Alembic migrations
+
+FRONTEND REQUIREMENTS
+- Pages:
+  - Login
+  - Dashboard (analytics)
+  - Orders list with filters
+  - Order creation form
+  - Order detail view with status timeline
+  - Products and inventory management
+- API integration using fetch or axios
+- Basic responsive UI
+
+SECURITY & QUALITY
+- JWT authentication
+- Role-based access control
+- Input validation
+- Meaningful error responses
+- Seed data for demo
+
+DELIVERABLES
+- Working backend and frontend
+- PostgreSQL integration
+- README with setup and run instructions
+- .env example file
+- App should run directly in Replit
+
+Focus on clarity, clean architecture, and realistic business logic.
