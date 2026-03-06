@@ -1,72 +1,134 @@
-# ERP Android WebView (POC)
+# ERP Android WebView – Install APK, Use Without Login
 
-This Android project opens the existing ERP web app in a `WebView` and performs auto-login by calling:
+This Android app wraps the ERP web app in a WebView and can open **without login**: it obtains a guest token from the backend and injects it so the user goes straight into the app.
 
-- `POST /api/mobile/bootstrap`
+---
 
-The web app login page is bypassed because the app injects JWT in `localStorage` key `token` before loading the ERP URL.
+## 1) Backend setup (no-login / guest mode)
 
-## 1) Backend prerequisites
+Guest mode is **on by default**. Ensure the backend has:
 
-Already implemented in this repo:
+- **`MOBILE_GUEST_ENABLED=true`** (default) – enables `POST /api/mobile/guest-token`
+- **`MOBILE_GUEST_USERNAME=guest`** (optional) – username for the guest user
+- **`MOBILE_GUEST_TOKEN_TTL_DAYS=365`** (optional) – token validity in days
 
-- `backend/routers/auth.py` contains `POST /api/mobile/bootstrap`
-- `.env` and `backend/.env` include:
-  - `MOBILE_POC_ENABLED=true`
-  - `MOBILE_POC_SECRET=...`
-  - `MOBILE_POC_USERNAME=admin`
-  - `MOBILE_POC_TOKEN_TTL_DAYS=30`
+On first run, the backend seeds a **guest** user (role `staff`) so the Android app can get a token without any credentials. No secret is required.
 
-Restart backend after env changes.
+To disable guest mode and use the old bootstrap flow with a secret:
 
-## 2) Configure Android build values
+- Set `MOBILE_GUEST_ENABLED=false`
+- Set `MOBILE_POC_ENABLED=true`, `MOBILE_POC_SECRET=...`, and build the APK with `ERP_MOBILE_SECRET` (see below).
 
-You can override these Gradle properties (from Android Studio `gradle.properties` or command-line `-P...`):
+---
 
-- `ERP_WEB_URL` (default: `http://10.0.2.2`)
-- `ERP_BOOTSTRAP_URL` (default: `http://10.0.2.2:8080/api/mobile/bootstrap`)
-- `ERP_MOBILE_SECRET` (**required**)
-- `ERP_BOOTSTRAP_USERNAME` (default: `admin`)
+## 2) Build the APK (no login required)
 
-Example:
+### Windows: use Android Studio (no `gradlew` needed)
+
+1. Open **Android Studio**.
+2. **File → Open** and select the **`android`** folder (e.g. `...\ERP_SAAS\src\android`).
+3. Wait for Gradle sync to finish.
+4. **Build → Build APK(s)**.
+5. APK path: `android\app\build\outputs\apk\debug\app-debug.apk`.
+
+To use the command line on Windows, you need the Gradle Wrapper. If `gradlew.bat` is missing or you see “gradlew is not recognized”:
+
+- **Option A:** Build from Android Studio as above (recommended on Windows).
+- **Option B:** Install Gradle (e.g. from [gradle.org/install](https://gradle.org/install/)), then in the `android` folder run:
+  ```bat
+  gradle wrapper --gradle-version=8.5
+  ```
+  After that you can use:
+  ```bat
+  .\gradlew.bat :app:assembleDebug
+  ```
+
+### Option A: Guest mode (no secret) – recommended
+
+Do **not** set `ERP_MOBILE_SECRET`. The app will call `/api/mobile/guest-token` and open without login.
+
+From project root (e.g. `src/`):
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
+
+Or in Android Studio: open the `android/` folder → Build → Build APK(s).
+
+**Output:** `android/app/build/outputs/apk/debug/app-debug.apk`
+
+**Defaults** point to your deployed server **103.127.30.237** (web at `http://103.127.30.237`, API at `/api`). Build and install the APK to use the app on a device without changing anything.
+
+For **emulator** (backend/frontend on your machine), override in `android/gradle.properties`:
 
 ```properties
-ERP_WEB_URL=http://10.0.2.2
-ERP_BOOTSTRAP_URL=http://10.0.2.2:8080/api/mobile/bootstrap
+ERP_WEB_URL=http://10.0.2.2:5000
+ERP_GUEST_TOKEN_URL=http://10.0.2.2:8080/api/mobile/guest-token
+```
+
+### Option B: Bootstrap mode (secret-based auto-login)
+
+If you use the old bootstrap flow (`MOBILE_POC_ENABLED=true`):
+
+```bash
+cd android
+./gradlew :app:assembleDebug -PERP_MOBILE_SECRET=your_mobile_poc_secret
+```
+
+Or set in `android/gradle.properties`:
+
+```properties
 ERP_MOBILE_SECRET=your_mobile_poc_secret
 ERP_BOOTSTRAP_USERNAME=admin
 ```
 
-> `10.0.2.2` is correct for Android emulator to access host machine localhost.
+---
 
-## 3) Build APK
+## 3) Gradle properties (optional)
 
-### Android Studio
+`android/gradle.properties` is preconfigured for the deployed server **103.127.30.237**:
 
-1. Open folder: `android/`
-2. Sync Gradle
-3. Build > Build APK(s)
-
-Output path:
-
-- `android/app/build/outputs/apk/debug/app-debug.apk`
-
-### Command line (if Gradle installed)
-
-```bash
-cd android
-gradle :app:assembleDebug -PERP_MOBILE_SECRET=your_mobile_poc_secret
+```properties
+ERP_WEB_URL=http://103.127.30.237
+ERP_GUEST_TOKEN_URL=http://103.127.30.237/api/mobile/guest-token
 ```
 
-## 4) Install APK
+To use a **different server**, change these URLs. To use **local emulator**, set:
 
-Use Android Studio device manager or:
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+```properties
+ERP_WEB_URL=http://10.0.2.2:5000
+ERP_GUEST_TOKEN_URL=http://10.0.2.2:8080/api/mobile/guest-token
 ```
 
-## Notes
+- **Guest mode (no login):** Leave `ERP_MOBILE_SECRET` unset.
+- **Bootstrap mode:** Set `ERP_MOBILE_SECRET=your_secret` and optionally `ERP_BOOTSTRAP_USERNAME=admin`.
 
-- This is a quick POC approach and stores secret/token in app path; not production hardening.
-- Current web app login behavior remains unchanged.
+---
+
+## 4) Install the APK
+
+- **Emulator:** Drag `app-debug.apk` onto the emulator or use Android Studio Run.
+- **Device:**  
+  `adb install -r android/app/build/outputs/apk/debug/app-debug.apk`
+
+---
+
+## 5) Release APK (optional)
+
+For a signed release APK:
+
+1. Create a keystore and configure signing in `android/app/build.gradle.kts` (signingConfigs).
+2. Run:  
+   `./gradlew :app:assembleRelease`
+
+---
+
+## Summary
+
+| Goal                         | Backend env                          | Build / gradle.properties                    |
+|-----------------------------|--------------------------------------|---------------------------------------------|
+| Open app **without login**  | `MOBILE_GUEST_ENABLED=true` (default)| Do **not** set `ERP_MOBILE_SECRET`          |
+| Auto-login with secret      | `MOBILE_POC_ENABLED=true`, secret    | Set `ERP_MOBILE_SECRET=...`                  |
+
+The same web app runs in the browser (with login) and in the Android APK (without login when using guest mode).

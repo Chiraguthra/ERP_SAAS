@@ -47,6 +47,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bootstrapAndOpenWebApp() {
+        if (BuildConfig.ERP_USE_GUEST_MODE) {
+            fetchGuestTokenAndLoad()
+            return
+        }
         val secret = BuildConfig.ERP_MOBILE_SECRET.trim()
         if (secret.isEmpty()) {
             Toast.makeText(this, "Missing ERP_MOBILE_SECRET in Android build config", Toast.LENGTH_LONG).show()
@@ -91,6 +95,49 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     injectTokenAndLoad(token)
+                }
+            }
+        })
+    }
+
+    private fun fetchGuestTokenAndLoad() {
+        val request = Request.Builder()
+            .url(BuildConfig.ERP_GUEST_TOKEN_URL)
+            .post("{}".toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+
+        httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Cannot connect. Start backend and enable MOBILE_GUEST_ENABLED.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    // Still load web URL so user can log in manually if backend is up
+                    webView.loadUrl(BuildConfig.ERP_WEB_URL)
+                }
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    runOnUiThread {
+                        webView.loadUrl(BuildConfig.ERP_WEB_URL)
+                    }
+                    return
+                }
+                val token = try {
+                    JSONObject(body).optString("access_token", "")
+                } catch (_: Exception) {
+                    ""
+                }
+                runOnUiThread {
+                    if (token.isNotBlank()) {
+                        injectTokenAndLoad(token)
+                    } else {
+                        webView.loadUrl(BuildConfig.ERP_WEB_URL)
+                    }
                 }
             }
         })

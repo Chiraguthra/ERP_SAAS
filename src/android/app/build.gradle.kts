@@ -16,16 +16,20 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val webUrl = (project.findProperty("ERP_WEB_URL") as String?) ?: "http://10.0.2.2"
+        val webUrl = (project.findProperty("ERP_WEB_URL") as String?) ?: "http://103.127.30.237"
         val bootstrapUrl = (project.findProperty("ERP_BOOTSTRAP_URL") as String?)
-            ?: "http://10.0.2.2:8080/api/mobile/bootstrap"
+            ?: "http://103.127.30.237/api/mobile/bootstrap"
+        val guestTokenUrl = (project.findProperty("ERP_GUEST_TOKEN_URL") as String?)
+            ?: "http://103.127.30.237/api/mobile/guest-token"
         val mobileSecret = (project.findProperty("ERP_MOBILE_SECRET") as String?) ?: ""
         val bootstrapUsername = (project.findProperty("ERP_BOOTSTRAP_USERNAME") as String?) ?: "admin"
 
         buildConfigField("String", "ERP_WEB_URL", "\"$webUrl\"")
         buildConfigField("String", "ERP_BOOTSTRAP_URL", "\"$bootstrapUrl\"")
+        buildConfigField("String", "ERP_GUEST_TOKEN_URL", "\"$guestTokenUrl\"")
         buildConfigField("String", "ERP_MOBILE_SECRET", "\"$mobileSecret\"")
         buildConfigField("String", "ERP_BOOTSTRAP_USERNAME", "\"$bootstrapUsername\"")
+        buildConfigField("boolean", "ERP_USE_GUEST_MODE", "${mobileSecret.isBlank()}")
     }
 
     buildTypes {

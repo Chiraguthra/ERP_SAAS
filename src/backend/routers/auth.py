@@ -29,6 +29,11 @@ MOBILE_POC_SECRET = os.getenv("MOBILE_POC_SECRET", "").strip()
 MOBILE_POC_USERNAME = os.getenv("MOBILE_POC_USERNAME", "admin").strip() or "admin"
 MOBILE_POC_TOKEN_TTL_DAYS = max(1, _env_int("MOBILE_POC_TOKEN_TTL_DAYS", 30))
 
+# Guest mode: Android app can get a token without login (no secret required)
+MOBILE_GUEST_ENABLED = os.getenv("MOBILE_GUEST_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+MOBILE_GUEST_USERNAME = os.getenv("MOBILE_GUEST_USERNAME", "guest").strip() or "guest"
+MOBILE_GUEST_TOKEN_TTL_DAYS = max(1, _env_int("MOBILE_GUEST_TOKEN_TTL_DAYS", 365))
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 router = APIRouter()
@@ -179,6 +184,34 @@ async def mobile_bootstrap(
     }
 
 
+@router.post("/api/mobile/guest-token")
+async def mobile_guest_token(db: Session = Depends(get_db)):
+    """
+    No-login token for Android app. When MOBILE_GUEST_ENABLED=true, returns a JWT
+    for the configured guest user so the app can open without showing login.
+    No secret or credentials required.
+    """
+    if not MOBILE_GUEST_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    username = MOBILE_GUEST_USERNAME
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=503, detail="Guest user not configured")
+    expires_delta = timedelta(days=MOBILE_GUEST_TOKEN_TTL_DAYS)
+    access_token = create_access_token(data={"sub": user.username}, expires_delta=expires_delta)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in_seconds": int(expires_delta.total_seconds()),
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "name": user.name,
+            "role": user.role,
+        },
+    }
+
+
 @router.post("/api/logout")
 async def logout():
     """Client clears token; this endpoint just returns 200 for compatibility."""
@@ -204,5 +237,17 @@ async def seed_admin():
             )
             db.add(new_admin)
             db.commit()
+        # Seed guest user for mobile no-login mode when MOBILE_GUEST_ENABLED is used
+        if MOBILE_GUEST_ENABLED:
+            guest = db.query(models.User).filter(models.User.username == MOBILE_GUEST_USERNAME).first()
+            if not guest:
+                guest_user = models.User(
+                    username=MOBILE_GUEST_USERNAME,
+                    password=get_password_hash("guest"),  # not used for login
+                    name="Guest",
+                    role="staff"
+                )
+                db.add(guest_user)
+                db.commit()
     finally:
         db.close()
