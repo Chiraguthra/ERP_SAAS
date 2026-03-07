@@ -14,6 +14,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -144,12 +146,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injectTokenAndLoad(token: String) {
-        webView.loadUrl("about:blank")
-        webView.postDelayed({
-            val escapedToken = JSONObject.quote(token)
-            webView.evaluateJavascript("localStorage.setItem('token', $escapedToken);", null)
-            webView.loadUrl(BuildConfig.ERP_WEB_URL)
-        }, 250)
+        // Pass token in URL so the web app (same origin) can read it and set localStorage.
+        // Setting localStorage on about:blank doesn't work - it's a different origin.
+        val baseUrl = BuildConfig.ERP_WEB_URL.trimEnd('/')
+        val separator = if (baseUrl.contains("?")) "&" else "?"
+        val encodedToken = URLEncoder.encode(token, StandardCharsets.UTF_8.toString())
+        val urlWithToken = "$baseUrl${separator}mobile_token=$encodedToken"
+        webView.loadUrl(urlWithToken)
     }
 
     @Deprecated("Deprecated in Java")
