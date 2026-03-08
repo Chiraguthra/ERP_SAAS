@@ -110,3 +110,16 @@ class OrderItem(Base):
     
     order = relationship("Order", back_populates="items")
     product = relationship("Product")
+
+
+class SalesLead(Base):
+    """Customer / Sales Lead - standalone table, no relation to customers or orders. Duplicates allowed."""
+    __tablename__ = "sales_leads"
+    id = Column(Integer, primary_key=True, index=True)
+    customer = Column(String, nullable=True)
+    company = Column(String, nullable=True)
+    designation = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    assigned = Column(String, nullable=True)

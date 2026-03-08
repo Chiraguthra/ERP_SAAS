@@ -16,6 +16,7 @@ import {
   Building2,
   UserCog,
   MapPin,
+  UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MouseEventHandler } from "react";
@@ -39,17 +40,18 @@ export function Sidebar({ className, mobile = false, onNavigate }: SidebarProps)
 
   const allLinks: NavLink[] = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"] },
-    { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "staff", "sales"] },
-    { href: "/products", label: "Products & Stock", icon: Package, roles: ["admin", "staff", "sales"] },
-    { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff", "sales"] },
-    { href: "/quotations", label: "Quotations", icon: FileText, roles: ["admin", "staff", "sales"] },
+    { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "staff"] },
+    { href: "/products", label: "Products & Stock", icon: Package, roles: ["admin", "staff"] },
+    { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] },
+    { href: "/sales-leads", label: "Customer / Sales Lead", icon: UserPlus, roles: ["admin", "staff", "sales"] },
+    { href: "/quotations", label: "Quotations", icon: FileText, roles: ["admin", "staff"] },
     { href: "/finance", label: "Finance", icon: Banknote, roles: ["admin", "accountant"] },
     { href: "/procurement", label: "Procurement", icon: Truck, roles: ["admin", "staff"] },
     { href: "/warehouses", label: "Warehouses", icon: Warehouse, roles: ["admin", "staff"] },
     { href: "/logistics", label: "Logistics", icon: MapPin, roles: ["admin", "logistics"] },
     { href: "/logistics-dashboard", label: "Logistics Dashboard", icon: BarChart3, roles: ["admin", "logistics"] },
     { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "accountant"] },
-    { href: "/retailer", label: "Retailer", icon: Store, roles: ["admin", "staff", "sales"] },
+    { href: "/retailer", label: "Retailer", icon: Store, roles: ["admin", "staff"] },
     { href: "/organizations", label: "Organizations", icon: Building2, roles: ["admin"] },
     { href: "/users", label: "Users", icon: UserCog, roles: ["admin"] },
   ];

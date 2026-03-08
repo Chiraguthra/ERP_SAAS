@@ -9,7 +9,7 @@ from .models import models
 from .models import erp_models  # noqa: F401 - register ERP tables with Base.metadata
 from .routers import auth, products, customers, orders, analytics, retailer, whatsapp
 from .routers import organizations, branches, users_manage, roles, audit
-from .routers import finance, procurement, sales_erp, inventory_erp, reports, saas, logistics, leads
+from .routers import finance, procurement, sales_erp, inventory_erp, reports, saas, logistics, leads, sales_leads
 
 
 def ensure_tables():
@@ -290,6 +290,7 @@ app.include_router(reports.router, tags=["Reports"])
 app.include_router(saas.router, tags=["SaaS"])
 app.include_router(logistics.router, tags=["Logistics"])
 app.include_router(leads.router, tags=["Leads"])
+app.include_router(sales_leads.router, tags=["Customer/Sales Lead"])
 
 @app.get("/api/health")
 def health_check():

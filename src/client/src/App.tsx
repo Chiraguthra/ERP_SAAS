@@ -20,10 +20,12 @@ import Users from "@/pages/Users";
 import Retailer from "@/pages/Retailer";
 import Logistics from "@/pages/Logistics";
 import LogisticsDashboard from "@/pages/LogisticsDashboard";
+import SalesLeads from "@/pages/SalesLeads";
 import Login from "@/pages/Login";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { RateEnquiryButton } from "@/components/RateEnquiryButton";
 
 function Router() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -58,6 +60,9 @@ function Router() {
             </button>
             <h1 className="text-xl font-semibold">Manager</h1>
           </div>
+          <div className="flex items-center gap-2">
+            <RateEnquiryButton />
+          </div>
         </header>
         <main className="flex-1 overflow-auto min-w-0">
           <Switch>
@@ -76,6 +81,7 @@ function Router() {
             <Route path="/retailer" component={Retailer} />
             <Route path="/logistics" component={Logistics} />
             <Route path="/logistics-dashboard" component={LogisticsDashboard} />
+            <Route path="/sales-leads" component={SalesLeads} />
             <Route component={NotFound} />
           </Switch>
         </main>
@@ -91,6 +97,7 @@ function AppRoutes() {
   const getDefaultRouteForRole = (role?: string) => {
     const r = (role || "").toLowerCase();
     if (r === "admin") return "/";
+    if (r === "sales") return "/sales-leads";
     if (r === "logistics") return "/logistics";
     if (r === "accountant") return "/finance";
     return "/orders";
@@ -110,7 +117,11 @@ function AppRoutes() {
       </div>
     );
   }
-  if (location === "/" && (user?.role || "").toLowerCase() !== "admin") {
+  const userRole = (user?.role ?? "").toLowerCase();
+  if (userRole === "sales" && location !== "/sales-leads" && location !== "/login") {
+    return <Redirect to="/sales-leads" />;
+  }
+  if (location === "/" && userRole !== "admin") {
     return <Redirect to={getDefaultRouteForRole(user?.role)} />;
   }
   return <Router />;
