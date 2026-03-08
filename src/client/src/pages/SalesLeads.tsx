@@ -12,13 +12,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -28,7 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, Plus, UserPlus, Edit, Download } from "lucide-react";
+import { Loader2, Plus, UserPlus, Edit, Download, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -74,26 +67,6 @@ export default function SalesLeads() {
       phone: "",
       city: "",
       assigned: "",
-    },
-  });
-
-  const citiesQuery = useQuery({
-    queryKey: ["/api/sales-leads/cities"],
-    queryFn: async () => {
-      const r = await authFetch("/api/sales-leads/cities");
-      if (!r.ok) throw new Error("Failed to load cities");
-      const j = await r.json();
-      return (j as { cities?: string[] }).cities ?? [];
-    },
-  });
-
-  const companiesQuery = useQuery({
-    queryKey: ["/api/sales-leads/companies"],
-    queryFn: async () => {
-      const r = await authFetch("/api/sales-leads/companies");
-      if (!r.ok) throw new Error("Failed to load companies");
-      const j = await r.json();
-      return (j as { companies?: string[] }).companies ?? [];
     },
   });
 
@@ -316,36 +289,23 @@ export default function SalesLeads() {
             </CardTitle>
             <div className="flex flex-wrap gap-4 pt-2">
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">City</Label>
-                <Select value={filterCity || "all"} onValueChange={(v) => setFilterCity(v === "all" ? "" : v)}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="All cities" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All cities</SelectItem>
-                    {(citiesQuery.data ?? []).map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm text-muted-foreground whitespace-nowrap sr-only">Search by city</Label>
+                <Input
+                  placeholder="Search by city"
+                  value={filterCity}
+                  onChange={(e) => setFilterCity(e.target.value)}
+                  className="w-[180px]"
+                />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">Company</Label>
-                <Select value={filterCompany || "all"} onValueChange={(v) => setFilterCompany(v === "all" ? "" : v)}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="All companies" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All companies</SelectItem>
-                    {(companiesQuery.data ?? []).map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm text-muted-foreground whitespace-nowrap sr-only">Search by company</Label>
+                <Input
+                  placeholder="Search by company"
+                  value={filterCompany}
+                  onChange={(e) => setFilterCompany(e.target.value)}
+                  className="w-[180px]"
+                />
               </div>
             </div>
           </CardHeader>

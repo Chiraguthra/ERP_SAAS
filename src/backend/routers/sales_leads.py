@@ -46,8 +46,8 @@ def _to_item(lead: models.SalesLead) -> dict:
 
 @router.get("/api/sales-leads")
 def list_sales_leads(
-    city: Optional[str] = Query(None, description="Filter by city"),
-    company: Optional[str] = Query(None, description="Filter by company"),
+    city: Optional[str] = Query(None, description="Search/filter by city (partial match)"),
+    company: Optional[str] = Query(None, description="Search/filter by company (partial match)"),
     limit: int = Query(500, le=10000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -55,9 +55,9 @@ def list_sales_leads(
 ):
     q = db.query(models.SalesLead)
     if city is not None and city.strip() != "":
-        q = q.filter(models.SalesLead.city == city.strip())
+        q = q.filter(models.SalesLead.city.ilike(f"%{city.strip()}%"))
     if company is not None and company.strip() != "":
-        q = q.filter(models.SalesLead.company == company.strip())
+        q = q.filter(models.SalesLead.company.ilike(f"%{company.strip()}%"))
     total = q.count()
     leads = q.order_by(models.SalesLead.id.desc()).offset(offset).limit(limit).all()
     return {"sales_leads": [_to_item(l) for l in leads], "total": total}
