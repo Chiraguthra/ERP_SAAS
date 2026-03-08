@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, Date
+from datetime import datetime, timedelta
+from typing import Optional
+
 from ..db.database import get_db
 from ..models import models
 from .auth import get_current_user
@@ -167,6 +170,68 @@ def get_analytics(db: Session = Depends(get_db), current_user: models.User = Dep
             "avgDispatchToDeliveryHours": float(avg_dispatch_to_delivery_hours),
         },
     }
+
+
+@router.get("/api/analytics/revenue-over-time")
+def get_revenue_over_time(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    group_by: str = "month",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Revenue from delivered orders, grouped by day/month/year for charting."""
+    delivered_filter = func.lower(func.coalesce(models.Order.status, "")) == "delivered"
+    dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
+
+    now = datetime.utcnow()
+    if not from_date:
+        from_date = (now.replace(day=1) - timedelta(days=1)).replace(day=1).strftime("%Y-%m-%d")
+    if not to_date:
+        to_date = now.strftime("%Y-%m-%d")
+
+    # Compare by date only to avoid timezone/end-of-day issues (include full from_date and to_date)
+    if dialect == "sqlite":
+        date_col = func.date(models.Order.created_at)
+    else:
+        date_col = func.cast(models.Order.created_at, Date)
+
+    if group_by == "day":
+        if dialect == "sqlite":
+            period_expr = func.strftime("%Y-%m-%d", models.Order.created_at)
+        else:
+            period_expr = func.to_char(func.date_trunc("day", models.Order.created_at), "YYYY-MM-DD")
+    elif group_by == "year":
+        if dialect == "sqlite":
+            period_expr = func.strftime("%Y", models.Order.created_at)
+        else:
+            period_expr = func.to_char(func.date_trunc("year", models.Order.created_at), "YYYY")
+    else:
+        group_by = "month"
+        if dialect == "sqlite":
+            period_expr = func.strftime("%Y-%m", models.Order.created_at)
+        else:
+            period_expr = func.to_char(func.date_trunc("month", models.Order.created_at), "YYYY-MM")
+
+    rows = (
+        db.query(
+            period_expr.label("period"),
+            func.coalesce(func.sum(models.Order.total_amount), 0).label("revenue"),
+        )
+        .filter(delivered_filter)
+        .filter(date_col >= from_date)
+        .filter(date_col <= to_date)
+        .group_by(period_expr)
+        .order_by(period_expr)
+        .all()
+    )
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "group_by": group_by,
+        "data": [{"period": str(r[0] or ""), "revenue": float(r[1] or 0)} for r in rows],
+    }
+
 
 @router.post("/seed")
 def seed_data(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):

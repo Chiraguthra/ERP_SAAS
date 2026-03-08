@@ -5,11 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, Plus, Truck, Edit, Trash2 } from "lucide-react";
+import { Loader2, Plus, Truck, Edit, Trash2, Calculator } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
+import { formatINR } from "@/lib/currency";
+import { calculateLogisticsRate } from "@/lib/logisticsRateCard";
 
 type LogisticsEntry = {
   id: number;
@@ -35,7 +39,12 @@ export default function Logistics() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRateEnquiryOpen, setIsRateEnquiryOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [rateLocal, setRateLocal] = useState(false);
+  const [rateDistance, setRateDistance] = useState("");
+  const [rateWeight, setRateWeight] = useState("");
+  const [rateResult, setRateResult] = useState<ReturnType<typeof calculateLogisticsRate> | null>(null);
 
   const form = useForm<LogisticsForm>({
     defaultValues: { order_id: "", product_name: "", product_unit: "", quantity: "", distance: "", date: new Date().toISOString().slice(0, 10) },
@@ -150,6 +159,32 @@ export default function Logistics() {
     }
   };
 
+  const handleRateEnquiry = () => {
+    const weight = parseFloat(rateWeight);
+    const distance = rateLocal ? 0 : parseFloat(rateDistance);
+    if (Number.isNaN(weight)) {
+      toast({ title: "Invalid input", description: "Enter weight in kg.", variant: "destructive" });
+      return;
+    }
+    if (!rateLocal && (Number.isNaN(distance) || distance < 0)) {
+      toast({ title: "Invalid input", description: "Enter distance in km or select Local.", variant: "destructive" });
+      return;
+    }
+    const result = calculateLogisticsRate(rateLocal, distance, weight);
+    setRateResult(result);
+    if (!result.valid) {
+      toast({ title: "Rate enquiry", description: result.error, variant: "destructive" });
+    }
+  };
+
+  const closeRateEnquiry = () => {
+    setIsRateEnquiryOpen(false);
+    setRateResult(null);
+    setRateLocal(false);
+    setRateDistance("");
+    setRateWeight("");
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -158,12 +193,85 @@ export default function Logistics() {
             <h2 className="text-3xl font-display font-bold">Logistics</h2>
             <p className="text-muted-foreground">Track deliveries, quantities, and distances</p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingId(null); form.reset(); } }}>
-            <DialogTrigger asChild>
-              <Button className="btn-primary">
-                <Plus className="w-4 h-4 mr-2" /> Add Entry
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Dialog open={isRateEnquiryOpen} onOpenChange={(open) => { setIsRateEnquiryOpen(!!open); if (!open) closeRateEnquiry(); }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={() => setIsRateEnquiryOpen(true)}>
+                  <Calculator className="w-4 h-4 mr-2" /> Rate Enquiry
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Rate Enquiry</DialogTitle>
+                  <p className="text-sm text-muted-foreground">From Jabalpur • Rate per kg by distance and weight</p>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="rate-local"
+                      checked={rateLocal}
+                      onCheckedChange={(c) => setRateLocal(!!c)}
+                    />
+                    <Label htmlFor="rate-local" className="cursor-pointer">Local</Label>
+                  </div>
+                  {!rateLocal && (
+                    <div className="space-y-2">
+                      <Label htmlFor="rate-distance">Distance (km)</Label>
+                      <Input
+                        id="rate-distance"
+                        type="number"
+                        min={0}
+                        max={480}
+                        step={0.1}
+                        placeholder="e.g. 100"
+                        value={rateDistance}
+                        onChange={(e) => setRateDistance(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="rate-weight">Weight (kg)</Label>
+                    <Input
+                      id="rate-weight"
+                      type="number"
+                      min={0.1}
+                      step={0.01}
+                      placeholder="e.g. 999"
+                      value={rateWeight}
+                      onChange={(e) => setRateWeight(e.target.value)}
+                    />
+                  </div>
+                  <Button type="button" onClick={handleRateEnquiry} className="w-full">
+                    <Calculator className="w-4 h-4 mr-2" /> Calculate
+                  </Button>
+                  {rateResult?.valid && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Band: {rateResult.distanceLabel} • Weight: {rateResult.weightLabel} kg
+                      </p>
+                      <p className="text-sm">
+                        Rate: {formatINR(rateResult.ratePerKg)} per kg
+                      </p>
+                      <p className="text-xl font-semibold">
+                        Total: {formatINR(rateResult.total)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {rateResult.weightKg} kg × {rateResult.ratePerKg} = {formatINR(rateResult.total)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={closeRateEnquiry}>Close</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingId(null); form.reset(); } }}>
+              <DialogTrigger asChild>
+                <Button className="btn-primary">
+                  <Plus className="w-4 h-4 mr-2" /> Add Entry
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editingId ? "Edit Entry" : "Add Logistics Entry"}</DialogTitle>
@@ -204,6 +312,7 @@ export default function Logistics() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {query.isLoading && (

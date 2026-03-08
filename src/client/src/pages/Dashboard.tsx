@@ -1,6 +1,20 @@
 import { Layout } from "@/components/Layout";
 import { useAnalytics } from "@/hooks/use-analytics";
+import {
+  useRevenueOverTime,
+  getPresetDates,
+  type RevenuePeriodPreset,
+} from "@/hooks/use-revenue-over-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Loader2, TrendingUp, ShoppingBag, IndianRupee, Package, Users, Truck } from "lucide-react";
 import { formatINR } from "@/lib/currency";
 import { 
@@ -8,6 +22,7 @@ import {
 } from "recharts";
 import { useLocation } from "wouter";
 import { getStatusLabel } from "@/lib/orderStatus";
+import { useMemo, useState } from "react";
 
 const defaultAnalytics = {
   totalOrders: 0,
@@ -34,6 +49,25 @@ const defaultAnalytics = {
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { data, isLoading, isError, error } = useAnalytics();
+
+  const [revenuePreset, setRevenuePreset] = useState<RevenuePeriodPreset>("this_month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const revenueParams = useMemo(
+    () => getPresetDates(revenuePreset, customFrom || undefined, customTo || undefined),
+    [revenuePreset, customFrom, customTo]
+  );
+  const {
+    data: revenueData,
+    isLoading: revenueLoading,
+  } = useRevenueOverTime(
+    revenueParams.from_date,
+    revenueParams.to_date,
+    revenueParams.group_by
+  );
+  const revenueChartData = revenueData?.data ?? [];
+  const totalRevenuePeriod = revenueChartData.reduce((s, d) => s + d.revenue, 0);
 
   if (isLoading) {
     return <Layout><div className="flex h-96 items-center justify-center"><Loader2 className="animate-spin text-primary w-8 h-8" /></div></Layout>;
@@ -174,8 +208,101 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Quick-win metrics */}
-        <div className="grid grid-cols-1 gap-8">
+        {/* Quick-win metrics: Revenue over time + Open Order Aging in same row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <Card className="shadow-lg shadow-black/5">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Revenue Over Time</CardTitle>
+                <p className="text-xs text-muted-foreground font-normal mt-1">
+                  Delivered orders • {revenueData ? formatINR(totalRevenuePeriod) : "—"} in selected period
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={revenuePreset}
+                  onValueChange={(v) => {
+                    const next = v as RevenuePeriodPreset;
+                    setRevenuePreset(next);
+                    if (next === "custom") {
+                      const n = new Date();
+                      setCustomFrom(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`);
+                      setCustomTo(n.toISOString().slice(0, 10));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[140px] h-9">
+                    <SelectValue placeholder="Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="this_month">This month</SelectItem>
+                    <SelectItem value="last_month">Last month</SelectItem>
+                    <SelectItem value="this_year">This year</SelectItem>
+                    <SelectItem value="last_year">Last year</SelectItem>
+                    <SelectItem value="custom">Custom range</SelectItem>
+                  </SelectContent>
+                </Select>
+                {revenuePreset === "custom" && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs whitespace-nowrap">From</Label>
+                      <Input
+                        type="date"
+                        className="h-9 w-[130px]"
+                        value={customFrom}
+                        onChange={(e) => setCustomFrom(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs whitespace-nowrap">To</Label>
+                      <Input
+                        type="date"
+                        className="h-9 w-[130px]"
+                        value={customTo}
+                        onChange={(e) => setCustomTo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="h-[280px]">
+              {revenueLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : revenueChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} vertical={false} />
+                    <XAxis
+                      dataKey="period"
+                      tick={{ fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => {
+                        if (v.length === 10) return v.slice(5);
+                        if (v.length === 7) return v.slice(0, 7);
+                        return v;
+                      }}
+                    />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip
+                      cursor={{ fill: "transparent" }}
+                      formatter={(value: number) => [formatINR(value), "Revenue"]}
+                      labelFormatter={(label) => `Period: ${label}`}
+                    />
+                    <Bar dataKey="revenue" radius={[4, 4, 0, 0]} fill="hsl(var(--primary))" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                  No revenue data for selected period
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="shadow-lg shadow-black/5">
             <CardHeader>
               <CardTitle>Open Order Aging</CardTitle>
