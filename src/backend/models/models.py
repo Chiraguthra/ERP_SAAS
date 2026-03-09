@@ -123,3 +123,34 @@ class SalesLead(Base):
     phone = Column(String, nullable=True)
     city = Column(String, nullable=True)
     assigned = Column(String, nullable=True)
+
+
+class QuotationLetterDefaults(Base):
+    """Defaults for simple quotation letter fields (buyer/seller details, subject, products, terms)."""
+    __tablename__ = "quotation_letter_defaults"
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_name = Column(String, nullable=True)
+    buyer_address = Column(String, nullable=True)
+    subject = Column(String, nullable=True)
+    product_details = Column(String, nullable=True)
+    terms_and_conditions = Column(String, nullable=True)
+    seller_name = Column(String, nullable=True)
+    seller_designation = Column(String, nullable=True)
+    seller_company = Column(String, nullable=True)
+    seller_phone = Column(String, nullable=True)
+
+
+class QuotationLetter(Base):
+    """Saved simple quotation letters used for PDF generation in the classic SILVERLINE format."""
+    __tablename__ = "quotation_letters"
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_name = Column(String, nullable=True)
+    buyer_address = Column(String, nullable=True)
+    subject = Column(String, nullable=True)
+    product_details = Column(String, nullable=True)
+    terms_and_conditions = Column(String, nullable=True)
+    seller_name = Column(String, nullable=True)
+    seller_designation = Column(String, nullable=True)
+    seller_company = Column(String, nullable=True)
+    seller_phone = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -16,7 +16,6 @@ import { z } from "zod";
 // Permissive schema so add product works with only name (or any subset)
 const productFormSchema = z.object({
   name: z.string().optional(),
-  sku: z.string().optional(),
   price: z.union([z.string(), z.number()]).optional(),
   stock: z.union([z.string(), z.number()]).optional(),
   description: z.string().optional(),
@@ -40,7 +39,7 @@ export default function Products() {
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
-    defaultValues: { name: "", sku: "", price: "0", stock: 0, description: "", unit: "" }
+    defaultValues: { name: "", price: "0", stock: 0, description: "", unit: "" }
   });
 
   useEffect(() => {
@@ -51,7 +50,6 @@ export default function Products() {
     // Build payload for API; all fields optional; coerce numbers
     const payload: Record<string, unknown> = {};
     if (data.name != null && String(data.name).trim() !== "") payload.name = String(data.name).trim();
-    if (data.sku != null && String(data.sku).trim() !== "") payload.sku = String(data.sku).trim();
     if (data.description != null && String(data.description).trim() !== "") payload.description = String(data.description).trim();
     if (data.unit != null && String(data.unit).trim() !== "") payload.unit = String(data.unit).trim();
     if (data.price != null && data.price !== "") {
@@ -92,7 +90,6 @@ export default function Products() {
     setEditingId(product.id);
     form.reset({
       name: product.name,
-      sku: product.sku,
       price: product.price,
       stock: product.stock,
       description: product.description || "",
@@ -111,7 +108,7 @@ export default function Products() {
     setIsDialogOpen(open);
     if (!open) {
       setEditingId(null);
-      form.reset({ name: "", sku: "", price: "0", stock: 0, description: "", unit: "" });
+      form.reset({ name: "", price: "0", stock: 0, description: "", unit: "" });
     }
   };
 
@@ -134,16 +131,10 @@ export default function Products() {
                 <DialogTitle>{editingId ? "Edit Product" : "Add New Product"}</DialogTitle>
               </DialogHeader>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Name</label>
-                    <Input {...form.register("name")} placeholder="Product Name" />
-                    {form.formState.errors.name && <span className="text-xs text-destructive">{form.formState.errors.name.message}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Item No.</label>
-                    <Input {...form.register("sku")} placeholder="e.g. ITEM-001" />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Name</label>
+                  <Input {...form.register("name")} placeholder="Product Name" />
+                  {form.formState.errors.name && <span className="text-xs text-destructive">{form.formState.errors.name.message}</span>}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

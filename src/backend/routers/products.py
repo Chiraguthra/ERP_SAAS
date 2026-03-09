@@ -48,8 +48,6 @@ def _product_create_to_model(product: ProductCreate) -> dict:
     """Convert ProductCreate to DB model kwargs."""
     name = (product.name or "").strip() or ""
     sku = (product.sku or "").strip() or None
-    if not sku:
-        sku = f"SKU-{uuid.uuid4().hex[:8]}"
     price = product.price if isinstance(product.price, (int, float)) else float(product.price or 0)
     stock = product.stock if isinstance(product.stock, (int, float)) else float(product.stock or 0)
     description = (product.description or "").strip() or None
@@ -122,6 +120,11 @@ def list_products(
 @router.post("/products")
 def create_product(product: ProductCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     data = _product_create_to_model(product)
+    # Auto-generate sequential numeric SKU if not provided:
+    # count existing products and assign next number as string.
+    if not data.get("sku"):
+        count = db.query(func.count(models.Product.id)).scalar() or 0
+        data["sku"] = str(int(count) + 1)
     db_product = models.Product(**data)
     db.add(db_product)
     db.commit()
@@ -150,7 +153,8 @@ def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db
         db_product.description = (data["description"] or "").strip() or None
     if "sku" in data and data["sku"] is not None:
         v = (data["sku"] or "").strip()
-        db_product.sku = v if v else (db_product.sku or f"SKU-{uuid.uuid4().hex[:8]}")
+        if v:
+            db_product.sku = v
     if "price" in data and data["price"] is not None:
         try:
             db_product.price = float(data["price"])

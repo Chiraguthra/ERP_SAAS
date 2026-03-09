@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DataTablePagination } from "@/components/DataTablePagination";
 import { Label } from "@/components/ui/label";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, Plus, UserPlus, Edit, Download, Search } from "lucide-react";
+import { Loader2, Plus, UserPlus, Edit, Download, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -56,6 +57,8 @@ export default function SalesLeads() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterCity, setFilterCity] = useState<string>("");
   const [filterCompany, setFilterCompany] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
 
   const form = useForm<SalesLeadForm>({
@@ -70,17 +73,45 @@ export default function SalesLeads() {
     },
   });
 
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.max(1, Math.min(200, pageSize));
+  const offset = (safePage - 1) * safePageSize;
+
   const leadsQuery = useQuery({
-    queryKey: ["/api/sales-leads", filterCity, filterCompany],
+    queryKey: ["/api/sales-leads", filterCity, filterCompany, safePage, safePageSize],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterCity) params.set("city", filterCity);
       if (filterCompany) params.set("company", filterCompany);
+       params.set("limit", String(safePageSize));
+       params.set("offset", String(offset));
       const r = await authFetch(`/api/sales-leads?${params}`);
       if (!r.ok) throw new Error("Failed to load leads");
       const j = await r.json();
-      return (j as { sales_leads?: SalesLeadEntry[] }).sales_leads ?? [];
+      const data = j as { sales_leads?: SalesLeadEntry[]; total?: number };
+      return {
+        items: data.sales_leads ?? [],
+        total: data.total ?? 0,
+      };
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await authFetch(`/api/sales-leads/${id}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to delete");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
+      toast({ title: "Deleted", description: "Lead deleted" });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const createMutation = useMutation({
@@ -107,8 +138,7 @@ export default function SalesLeads() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads/cities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Success", description: "Lead added" });
@@ -141,8 +171,7 @@ export default function SalesLeads() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads/cities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
       setIsDialogOpen(false);
       setEditingId(null);
       form.reset();
@@ -212,7 +241,17 @@ export default function SalesLeads() {
     }
   };
 
-  const leads = leadsQuery.data ?? [];
+  const leads = leadsQuery.data?.items ?? [];
+  const total = leadsQuery.data?.total ?? 0;
+
+  const handleDelete = (id: number) => {
+    if (!confirm("Are you sure you want to delete this lead?")) return;
+    deleteMutation.mutate(id);
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterCity, filterCompany]);
 
   return (
     <Layout>
@@ -316,49 +355,67 @@ export default function SalesLeads() {
               </div>
             )}
             {!leadsQuery.isLoading && (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead>Id</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Designation</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>City</TableHead>
-                      <TableHead>Assigned</TableHead>
-                      <TableHead className="text-right w-24">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {leads.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-mono text-muted-foreground">{row.id}</TableCell>
-                        <TableCell>{row.customer ?? "—"}</TableCell>
-                        <TableCell>{row.company ?? "—"}</TableCell>
-                        <TableCell>{row.designation ?? "—"}</TableCell>
-                        <TableCell>{row.status ?? "—"}</TableCell>
-                        <TableCell>{row.phone ?? "—"}</TableCell>
-                        <TableCell>{row.city ?? "—"}</TableCell>
+              <>
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Id</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Company</TableHead>
+                        <TableHead>Designation</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>City</TableHead>
+                        <TableHead>Assigned</TableHead>
+                        <TableHead className="text-right w-24">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leads.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-mono text-muted-foreground">{row.id}</TableCell>
+                          <TableCell>{row.customer ?? "—"}</TableCell>
+                          <TableCell>{row.company ?? "—"}</TableCell>
+                          <TableCell>{row.designation ?? "—"}</TableCell>
+                          <TableCell>{row.status ?? "—"}</TableCell>
+                          <TableCell>{row.phone ?? "—"}</TableCell>
+                          <TableCell>{row.city ?? "—"}</TableCell>
                         <TableCell>{row.assigned ?? "—"}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right space-x-1">
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(row)} aria-label="Edit">
                             <Edit className="w-4 h-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(row.id)}
+                            aria-label="Delete"
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
                         </TableCell>
-                      </TableRow>
-                    ))}
-                    {leads.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                          No leads yet. Add a lead to get started.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                        </TableRow>
+                      ))}
+                      {leads.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            No leads yet. Add a lead to get started.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <DataTablePagination
+                  totalCount={total}
+                  page={page}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              </>
             )}
           </CardContent>
         </Card>

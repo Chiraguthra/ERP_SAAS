@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { DataTablePagination } from "@/components/DataTablePagination";
-import { useOrders } from "@/hooks/use-orders";
+import { useOrder, useOrders } from "@/hooks/use-orders";
 import { useCustomers } from "@/hooks/use-customers";
 import { useProducts } from "@/hooks/use-products";
 import { Link, useSearch } from "wouter";
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Search, Loader2, Minus, Edit, Trash2, ChevronDown } from "lucide-react";
+import { Plus, Search, Loader2, Minus, Edit, Trash2, ChevronDown, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +39,8 @@ export default function Orders() {
   const [openProductPopoverIndex, setOpenProductPopoverIndex] = useState<number | null>(null);
   const [openCustomerPopover, setOpenCustomerPopover] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [viewItemsOrderId, setViewItemsOrderId] = useState<number | null>(null);
+  const [isItemsDialogOpen, setIsItemsDialogOpen] = useState(false);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [billId, setBillId] = useState<string>("");
@@ -63,6 +65,7 @@ export default function Orders() {
   });
   const { customers } = useCustomers({ q: customerSearch, page: 1, pageSize: 200 });
   const { products } = useProducts({ page: 1, pageSize: 200 });
+  const { order: itemsOrder, isLoading: isLoadingItemsOrder } = useOrder(viewItemsOrderId ?? 0);
 
   const getCustomerDisplayName = (customer: { name?: string | null; company?: string | null; contactPerson?: string | null; emailId?: string | null }) => {
     return customer.name?.trim() || customer.company?.trim() || customer.contactPerson?.trim() || customer.emailId?.trim() || "Unnamed customer";
@@ -569,26 +572,61 @@ export default function Orders() {
                           {(order.status || "").toString().toLowerCase() === "pending" ? (
                             <>
                               <Link href={`/orders/${order.id}`}>
-                                <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity gap-1.5">
-                                  <Edit className="w-4 h-4" /> Edit
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                  aria-label="Edit order"
+                                >
+                                  <Edit className="w-4 h-4" />
                                 </Button>
                               </Link>
                               <Button
                                 variant="ghost"
-                                size="sm"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                                size="icon"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => handleDeleteOrder(order.id)}
                                 disabled={isDeleting}
+                                aria-label="Delete order"
                               >
-                                <Trash2 className="w-4 h-4" /> Delete
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  setViewItemsOrderId(order.id);
+                                  setIsItemsDialogOpen(true);
+                                }}
+                                aria-label="View products"
+                              >
+                                <Eye className="w-4 h-4" />
                               </Button>
                             </>
                           ) : (
-                            <Link href={`/orders/${order.id}`}>
-                              <Button variant="ghost" size="sm" className="gap-1.5">
-                                View
+                            <>
+                              <Link href={`/orders/${order.id}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="View order"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              </Link>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setViewItemsOrderId(order.id);
+                                  setIsItemsDialogOpen(true);
+                                }}
+                                aria-label="View products"
+                              >
+                                <Eye className="w-4 h-4" />
                               </Button>
-                            </Link>
+                            </>
                           )}
                         </TableCell>
                       </TableRow>
@@ -606,6 +644,57 @@ export default function Orders() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog
+          open={isItemsDialogOpen}
+          onOpenChange={(open) => {
+            setIsItemsDialogOpen(open);
+            if (!open) {
+              setViewItemsOrderId(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                Order products {viewItemsOrderId != null ? `#${viewItemsOrderId}` : ""}
+              </DialogTitle>
+            </DialogHeader>
+            {isLoadingItemsOrder ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="border rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Product</TableHead>
+                      <TableHead>Qty</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(itemsOrder?.items ?? []).map((item: any) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          {item.product?.name || item.product?.sku || `#${item.productId}`}
+                        </TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                      </TableRow>
+                    ))}
+                    {(itemsOrder?.items ?? []).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center py-6 text-muted-foreground">
+                          No products on this order.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
