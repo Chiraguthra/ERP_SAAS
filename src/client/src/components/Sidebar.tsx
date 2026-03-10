@@ -43,7 +43,7 @@ export function Sidebar({ className, mobile = false, onNavigate }: SidebarProps)
     { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "staff"] },
     { href: "/products", label: "Products & Stock", icon: Package, roles: ["admin", "staff"] },
     { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] },
-    { href: "/sales-leads", label: "Customer / Sales Lead", icon: UserPlus, roles: ["admin", "staff", "sales"] },
+    { href: "/sales-leads", label: "CRM", icon: UserPlus, roles: ["admin", "staff", "sales"] },
     { href: "/quotations", label: "Quotations", icon: FileText, roles: ["admin", "staff"] },
     { href: "/finance", label: "Finance", icon: Banknote, roles: ["admin", "accountant"] },
     { href: "/procurement", label: "Procurement", icon: Truck, roles: ["admin", "staff"] },

@@ -258,7 +258,7 @@ export default function SalesLeads() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-3xl font-display font-bold">Customer / Sales Lead</h2>
+            <h2 className="text-3xl font-display font-bold">CRM</h2>
             <p className="text-muted-foreground">Manage sales leads and customer contacts</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
