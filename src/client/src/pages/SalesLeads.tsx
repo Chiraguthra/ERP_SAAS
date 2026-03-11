@@ -30,8 +30,8 @@ import { DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calculator, ListOrdered } from "lucide-react";
-import { calculateLogisticsRate } from "@/lib/logisticsRateCard";
 import { formatINR } from "@/lib/currency";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 
 type SalesLeadEntry = {
@@ -66,6 +66,7 @@ export default function SalesLeads() {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterCity, setFilterCity] = useState<string>("");
@@ -78,14 +79,11 @@ export default function SalesLeads() {
   const [isPriceListOpen, setIsPriceListOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
-  const [enquiryDistance, setEnquiryDistance] = useState("");
-  const [enquiryWeight, setEnquiryWeight] = useState("");
+  const [productPopoverOpen, setProductPopoverOpen] = useState(false);
   const [enquiryResult, setEnquiryResult] = useState<{
-    baseFirst: number;
-    baseFinal: number;
-    freight: number;
-    totalFirst: number;
-    totalFinal: number;
+    productName: string;
+    firstPrice: number;
+    finalPrice: number;
   } | null>(null);
 
   const form = useForm<SalesLeadForm>({
@@ -252,12 +250,11 @@ export default function SalesLeads() {
   const resetEnquiryState = () => {
     setSelectedProductId(null);
     setProductSearch("");
-    setEnquiryDistance("");
-    setEnquiryWeight("");
+    setProductPopoverOpen(false);
     setEnquiryResult(null);
   };
 
-  const handleEnquiryCalculate = () => {
+  const handleShowPrice = () => {
     const products = productPricesQuery.data ?? [];
     const selected = products.find((p) => p.id === selectedProductId);
     if (!selected) {
@@ -265,52 +262,10 @@ export default function SalesLeads() {
       return;
     }
 
-    const hasDistance = enquiryDistance.trim() !== "";
-    const hasWeight = enquiryWeight.trim() !== "";
-
-    let freight = 0;
-
-    if (hasDistance || hasWeight) {
-      if (!(hasDistance && hasWeight)) {
-        toast({
-          title: "Missing input",
-          description: "Please enter both distance and weight, or leave both empty.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const distanceKm = parseFloat(enquiryDistance);
-      const weightKg = parseFloat(enquiryWeight);
-      if (Number.isNaN(distanceKm) || distanceKm < 0 || Number.isNaN(weightKg) || weightKg <= 0) {
-        toast({
-          title: "Invalid input",
-          description: "Distance must be ≥ 0 and weight must be greater than 0.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const result = calculateLogisticsRate(false, distanceKm, weightKg);
-      if (!result.valid) {
-        toast({ title: "Rate enquiry", description: result.error, variant: "destructive" });
-        return;
-      }
-      freight = result.total;
-    }
-
-    const baseFirst = Number(selected.first_price ?? 0);
-    const baseFinal = Number(selected.final_price ?? 0);
-
-    const totalFirst = baseFirst + freight;
-    const totalFinal = baseFinal + freight;
-
     setEnquiryResult({
-      baseFirst,
-      baseFinal,
-      freight,
-      totalFirst,
-      totalFinal,
+      productName: selected.product_name,
+      firstPrice: Number(selected.first_price ?? 0),
+      finalPrice: Number(selected.final_price ?? 0),
     });
   };
 
@@ -429,13 +384,13 @@ export default function SalesLeads() {
                 <DialogHeader>
                   <DialogTitle>Enquire Price</DialogTitle>
                   <DialogDescription>
-                    Select a product and optionally enter distance and weight to include logistics amount.
+                    Select a product to view its first and final price.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label>Product</Label>
-                    <Popover>
+                    <Popover open={productPopoverOpen} onOpenChange={setProductPopoverOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -467,6 +422,7 @@ export default function SalesLeads() {
                                 onSelect={() => {
                                   setSelectedProductId(p.id);
                                   setProductSearch("");
+                                  setProductPopoverOpen(false);
                                 }}
                               >
                                 {p.product_name}
@@ -477,53 +433,41 @@ export default function SalesLeads() {
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Distance (km, optional)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={enquiryDistance}
-                        onChange={(e) => setEnquiryDistance(e.target.value)}
-                        placeholder="e.g. 100"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Weight (kg, optional)</Label>
-                      <Input
-                        type="number"
-                        min={0.1}
-                        step={0.01}
-                        value={enquiryWeight}
-                        onChange={(e) => setEnquiryWeight(e.target.value)}
-                        placeholder="e.g. 999"
-                      />
-                    </div>
-                  </div>
-                  <Button type="button" className="w-full" onClick={handleEnquiryCalculate}>
-                    <Calculator className="w-4 h-4 mr-2" /> Calculate Price
+                  <Button type="button" className="w-full" onClick={handleShowPrice}>
+                    <Calculator className="w-4 h-4 mr-2" /> Show Price
                   </Button>
                   {enquiryResult && (
-                    <div className="rounded-lg border bg-muted/30 p-4 space-y-1 text-sm">
-                      <p>
-                        Base First Price: <span className="font-semibold">{formatINR(enquiryResult.baseFirst)}</span>
-                      </p>
-                      <p>
-                        Base Final Price: <span className="font-semibold">{formatINR(enquiryResult.baseFinal)}</span>
-                      </p>
-                      <p>
-                        Logistics Amount: <span className="font-semibold">{formatINR(enquiryResult.freight)}</span>
-                      </p>
-                      <p className="pt-2">
-                        Final First Price:{" "}
-                        <span className="font-semibold">{formatINR(enquiryResult.totalFirst)}</span>
-                      </p>
-                      <p>
-                        Final Final Price:{" "}
-                        <span className="font-semibold">{formatINR(enquiryResult.totalFinal)}</span>
-                      </p>
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3 text-sm">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-muted/40">
+                            <th className="border px-2 py-1 text-left">Product</th>
+                            <th className="border px-2 py-1 text-right">First Price</th>
+                            <th className="border px-2 py-1 text-right">Final Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="border px-2 py-1">{enquiryResult.productName}</td>
+                            <td className="border px-2 py-1 text-right">{formatINR(enquiryResult.firstPrice)}</td>
+                            <td className="border px-2 py-1 text-right">{formatINR(enquiryResult.finalPrice)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setIsEnquiryOpen(false);
+                      resetEnquiryState();
+                      navigate("/rate-enquiry");
+                    }}
+                  >
+                    Freight charges
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>

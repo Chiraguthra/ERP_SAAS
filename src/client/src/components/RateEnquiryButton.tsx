@@ -15,9 +15,9 @@ import { formatINR } from "@/lib/currency";
 import { calculateLogisticsRate } from "@/lib/logisticsRateCard";
 import { useToast } from "@/hooks/use-toast";
 
-export function RateEnquiryButton() {
+export function RateEnquiryButton({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [rateLocal, setRateLocal] = useState(false);
   const [rateDistance, setRateDistance] = useState("");
   const [rateWeight, setRateWeight] = useState("");

@@ -21,6 +21,7 @@ import Retailer from "@/pages/Retailer";
 import Logistics from "@/pages/Logistics";
 import LogisticsDashboard from "@/pages/LogisticsDashboard";
 import SalesLeads from "@/pages/SalesLeads";
+import RateEnquiry from "@/pages/RateEnquiry";
 import Login from "@/pages/Login";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Menu, X } from "lucide-react";
@@ -82,6 +83,7 @@ function Router() {
             <Route path="/logistics" component={Logistics} />
             <Route path="/logistics-dashboard" component={LogisticsDashboard} />
             <Route path="/sales-leads" component={SalesLeads} />
+            <Route path="/rate-enquiry" component={RateEnquiry} />
             <Route component={NotFound} />
           </Switch>
         </main>
