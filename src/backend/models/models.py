@@ -154,3 +154,12 @@ class QuotationLetter(Base):
     seller_company = Column(String, nullable=True)
     seller_phone = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProductPriceListItem(Base):
+    """Price list for CRM rate enquiry – first and final price per product."""
+    __tablename__ = "product_price_list"
+    id = Column(Integer, primary_key=True, index=True)
+    product_name = Column(String, nullable=False, unique=True)
+    first_price = Column(Numeric, nullable=False)
+    final_price = Column(Numeric, nullable=False)

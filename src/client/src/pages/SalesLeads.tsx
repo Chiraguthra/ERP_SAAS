@@ -22,10 +22,16 @@ import {
 import { DataTablePagination } from "@/components/DataTablePagination";
 import { Label } from "@/components/ui/label";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, Plus, UserPlus, Edit, Download, Search, Trash2 } from "lucide-react";
+import { Loader2, Plus, UserPlus, Edit, Download, Search, Trash2, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
+import { DialogDescription } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Calculator, ListOrdered } from "lucide-react";
+import { calculateLogisticsRate } from "@/lib/logisticsRateCard";
+import { formatINR } from "@/lib/currency";
 import { useAuth } from "@/hooks/use-auth";
 
 type SalesLeadEntry = {
@@ -49,6 +55,13 @@ type SalesLeadForm = {
   assigned: string;
 };
 
+type ProductPriceListItem = {
+  id: number;
+  product_name: string;
+  first_price: number;
+  final_price: number;
+};
+
 export default function SalesLeads() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -60,6 +73,20 @@ export default function SalesLeads() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
+
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+  const [isPriceListOpen, setIsPriceListOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [productSearch, setProductSearch] = useState("");
+  const [enquiryDistance, setEnquiryDistance] = useState("");
+  const [enquiryWeight, setEnquiryWeight] = useState("");
+  const [enquiryResult, setEnquiryResult] = useState<{
+    baseFirst: number;
+    baseFinal: number;
+    freight: number;
+    totalFirst: number;
+    totalFinal: number;
+  } | null>(null);
 
   const form = useForm<SalesLeadForm>({
     defaultValues: {
@@ -93,6 +120,17 @@ export default function SalesLeads() {
         items: data.sales_leads ?? [],
         total: data.total ?? 0,
       };
+    },
+  });
+
+  const productPricesQuery = useQuery({
+    queryKey: ["/api/product-price-list"],
+    queryFn: async () => {
+      const r = await authFetch("/api/product-price-list");
+      if (!r.ok) {
+        throw new Error("Failed to load product price list");
+      }
+      return (await r.json()) as ProductPriceListItem[];
     },
   });
 
@@ -211,6 +249,71 @@ export default function SalesLeads() {
     setIsDialogOpen(open);
   };
 
+  const resetEnquiryState = () => {
+    setSelectedProductId(null);
+    setProductSearch("");
+    setEnquiryDistance("");
+    setEnquiryWeight("");
+    setEnquiryResult(null);
+  };
+
+  const handleEnquiryCalculate = () => {
+    const products = productPricesQuery.data ?? [];
+    const selected = products.find((p) => p.id === selectedProductId);
+    if (!selected) {
+      toast({ title: "Select product", description: "Please select a product first.", variant: "destructive" });
+      return;
+    }
+
+    const hasDistance = enquiryDistance.trim() !== "";
+    const hasWeight = enquiryWeight.trim() !== "";
+
+    let freight = 0;
+
+    if (hasDistance || hasWeight) {
+      if (!(hasDistance && hasWeight)) {
+        toast({
+          title: "Missing input",
+          description: "Please enter both distance and weight, or leave both empty.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const distanceKm = parseFloat(enquiryDistance);
+      const weightKg = parseFloat(enquiryWeight);
+      if (Number.isNaN(distanceKm) || distanceKm < 0 || Number.isNaN(weightKg) || weightKg <= 0) {
+        toast({
+          title: "Invalid input",
+          description: "Distance must be ≥ 0 and weight must be greater than 0.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = calculateLogisticsRate(false, distanceKm, weightKg);
+      if (!result.valid) {
+        toast({ title: "Rate enquiry", description: result.error, variant: "destructive" });
+        return;
+      }
+      freight = result.total;
+    }
+
+    const baseFirst = Number(selected.first_price ?? 0);
+    const baseFinal = Number(selected.final_price ?? 0);
+
+    const totalFirst = baseFirst + freight;
+    const totalFinal = baseFinal + freight;
+
+    setEnquiryResult({
+      baseFirst,
+      baseFinal,
+      freight,
+      totalFirst,
+      totalFinal,
+    });
+  };
+
   const handleDownloadCsv = async () => {
     try {
       const params = new URLSearchParams();
@@ -261,18 +364,19 @@ export default function SalesLeads() {
             <h2 className="text-3xl font-display font-bold">CRM</h2>
             <p className="text-muted-foreground">Manage sales leads and customer contacts</p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-            <DialogTrigger asChild>
-              <Button className="btn-primary" type="button" onClick={() => { setEditingId(null); form.reset(); setIsDialogOpen(true); }}>
-                <Plus className="w-4 h-4 mr-2" /> Add Lead
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{editingId ? "Edit Lead" : "New Lead"}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
+              <DialogTrigger asChild>
+                <Button className="btn-primary" type="button" onClick={() => { setEditingId(null); form.reset(); setIsDialogOpen(true); }}>
+                  <Plus className="w-4 h-4 mr-2" /> Add Lead
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{editingId ? "Edit Lead" : "New Lead"}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Customer</Label>
                     <Input {...form.register("customer")} placeholder="Customer name" />
@@ -314,11 +418,141 @@ export default function SalesLeads() {
               </form>
             </DialogContent>
           </Dialog>
-          {isAdmin && (
-            <Button variant="outline" onClick={handleDownloadCsv}>
-              <Download className="w-4 h-4 mr-2" /> Download CSV
-            </Button>
-          )}
+
+            <Dialog open={isEnquiryOpen} onOpenChange={(open) => { if (!open) { setIsEnquiryOpen(false); resetEnquiryState(); } else { setIsEnquiryOpen(true); } }}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline" onClick={() => setIsEnquiryOpen(true)}>
+                  <Calculator className="w-4 h-4 mr-2" /> Enquire Price
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Enquire Price</DialogTitle>
+                  <DialogDescription>
+                    Select a product and optionally enter distance and weight to include logistics amount.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Product</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full justify-between font-normal"
+                          disabled={productPricesQuery.isLoading || !!productPricesQuery.error}
+                        >
+                          <span className="truncate">
+                            {selectedProductId
+                              ? productPricesQuery.data?.find((p) => p.id === selectedProductId)?.product_name ?? "Select product"
+                              : "Select product"}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                        <Command>
+                          <CommandInput
+                            placeholder="Search product..."
+                            value={productSearch}
+                            onValueChange={setProductSearch}
+                          />
+                          <CommandList>
+                            <CommandEmpty>No product found.</CommandEmpty>
+                            {(productPricesQuery.data ?? []).map((p) => (
+                              <CommandItem
+                                key={p.id}
+                                value={p.product_name}
+                                onSelect={() => {
+                                  setSelectedProductId(p.id);
+                                  setProductSearch("");
+                                }}
+                              >
+                                {p.product_name}
+                              </CommandItem>
+                            ))}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Distance (km, optional)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={enquiryDistance}
+                        onChange={(e) => setEnquiryDistance(e.target.value)}
+                        placeholder="e.g. 100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Weight (kg, optional)</Label>
+                      <Input
+                        type="number"
+                        min={0.1}
+                        step={0.01}
+                        value={enquiryWeight}
+                        onChange={(e) => setEnquiryWeight(e.target.value)}
+                        placeholder="e.g. 999"
+                      />
+                    </div>
+                  </div>
+                  <Button type="button" className="w-full" onClick={handleEnquiryCalculate}>
+                    <Calculator className="w-4 h-4 mr-2" /> Calculate Price
+                  </Button>
+                  {enquiryResult && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-1 text-sm">
+                      <p>
+                        Base First Price: <span className="font-semibold">{formatINR(enquiryResult.baseFirst)}</span>
+                      </p>
+                      <p>
+                        Base Final Price: <span className="font-semibold">{formatINR(enquiryResult.baseFinal)}</span>
+                      </p>
+                      <p>
+                        Logistics Amount: <span className="font-semibold">{formatINR(enquiryResult.freight)}</span>
+                      </p>
+                      <p className="pt-2">
+                        Final First Price:{" "}
+                        <span className="font-semibold">{formatINR(enquiryResult.totalFirst)}</span>
+                      </p>
+                      <p>
+                        Final Final Price:{" "}
+                        <span className="font-semibold">{formatINR(enquiryResult.totalFinal)}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {isAdmin && (
+              <Dialog open={isPriceListOpen} onOpenChange={setIsPriceListOpen}>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline">
+                    <ListOrdered className="w-4 h-4 mr-2" /> Product Price List
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Product Price List</DialogTitle>
+                    <DialogDescription>
+                      Admins can view and edit first and final prices used for price enquiry.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ProductPriceListEditor />
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {isAdmin && (
+              <Button variant="outline" onClick={handleDownloadCsv}>
+                <Download className="w-4 h-4 mr-2" /> Download CSV
+              </Button>
+            )}
+          </div>
         </div>
 
         <Card>
@@ -421,5 +655,218 @@ export default function SalesLeads() {
         </Card>
       </div>
     </Layout>
+  );
+}
+
+function ProductPriceListEditor() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery<ProductPriceListItem[]>({
+    queryKey: ["/api/product-price-list"],
+    queryFn: async () => {
+      const r = await authFetch("/api/product-price-list");
+      if (!r.ok) {
+        throw new Error("Failed to load product price list");
+      }
+      return (await r.json()) as ProductPriceListItem[];
+    },
+  });
+
+  const [rows, setRows] = useState<ProductPriceListItem[]>([]);
+
+  useEffect(() => {
+    setRows(data ?? []);
+  }, [data]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (item: ProductPriceListItem) => {
+      const r = await authFetch(`/api/product-price-list/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_name: item.product_name,
+          first_price: item.first_price,
+          final_price: item.final_price,
+        }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to update");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/product-price-list"] });
+      toast({ title: "Saved", description: "Product price updated" });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (item: Omit<ProductPriceListItem, "id">) => {
+      const r = await authFetch("/api/product-price-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to create");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/product-price-list"] });
+      toast({ title: "Added", description: "New product price added" });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const handleRowChange = (id: number, field: keyof ProductPriceListItem, value: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              [field]:
+                field === "first_price" || field === "final_price"
+                  ? Number(value || 0)
+                  : value,
+            }
+          : row
+      )
+    );
+  };
+
+  const handleSaveRow = (row: ProductPriceListItem) => {
+    updateMutation.mutate(row);
+  };
+
+  const [newRow, setNewRow] = useState<Omit<ProductPriceListItem, "id">>({
+    product_name: "",
+    first_price: 0,
+    final_price: 0,
+  });
+
+  const handleAddRow = () => {
+    if (!newRow.product_name.trim()) {
+      toast({ title: "Product name required", description: "Enter product name before adding.", variant: "destructive" });
+      return;
+    }
+    createMutation.mutate(newRow);
+    setNewRow({ product_name: "", first_price: 0, final_price: 0 });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="py-4 text-sm text-muted-foreground">
+        Loading product price list...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-4 text-sm text-destructive">
+        Failed to load product price list.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="w-10">Id</TableHead>
+              <TableHead>Product</TableHead>
+              <TableHead className="w-32">First Price</TableHead>
+              <TableHead className="w-32">Final Price</TableHead>
+              <TableHead className="w-28 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="font-mono text-muted-foreground">{row.id}</TableCell>
+                <TableCell>
+                  <Input
+                    value={row.product_name}
+                    onChange={(e) => handleRowChange(row.id, "product_name", e.target.value)}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    value={row.first_price}
+                    onChange={(e) => handleRowChange(row.id, "first_price", e.target.value)}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    value={row.final_price}
+                    onChange={(e) => handleRowChange(row.id, "final_price", e.target.value)}
+                  />
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSaveRow(row)}
+                    disabled={updateMutation.isPending}
+                  >
+                    Save
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                  No products yet. Add a row below.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="border-t pt-4 space-y-2">
+        <p className="text-sm font-medium">Add new product</p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <Input
+            className="sm:col-span-2"
+            placeholder="Product name"
+            value={newRow.product_name}
+            onChange={(e) => setNewRow((prev) => ({ ...prev, product_name: e.target.value }))}
+          />
+          <Input
+            type="number"
+            placeholder="First price"
+            value={newRow.first_price}
+            onChange={(e) => setNewRow((prev) => ({ ...prev, first_price: Number(e.target.value || 0) }))}
+          />
+          <Input
+            type="number"
+            placeholder="Final price"
+            value={newRow.final_price}
+            onChange={(e) => setNewRow((prev) => ({ ...prev, final_price: Number(e.target.value || 0) }))}
+          />
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button
+            size="sm"
+            onClick={handleAddRow}
+            disabled={createMutation.isPending}
+          >
+            Add Product
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

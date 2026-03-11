@@ -120,11 +120,12 @@ def list_products(
 @router.post("/products")
 def create_product(product: ProductCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     data = _product_create_to_model(product)
-    # Auto-generate sequential numeric SKU if not provided:
-    # count existing products and assign next number as string.
+    # Auto-generate sequential numeric SKU if not provided.
+    # Use the current maximum product id so that even if rows are deleted
+    # we never re‑use an old SKU value.
     if not data.get("sku"):
-        count = db.query(func.count(models.Product.id)).scalar() or 0
-        data["sku"] = str(int(count) + 1)
+        max_id = db.query(func.max(models.Product.id)).scalar() or 0
+        data["sku"] = str(int(max_id) + 1)
     db_product = models.Product(**data)
     db.add(db_product)
     db.commit()
