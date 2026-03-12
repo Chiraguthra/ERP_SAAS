@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PackageOpen, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
@@ -32,8 +32,12 @@ export default function Login() {
     <div className="min-h-screen w-full flex items-center justify-center bg-muted/30">
       <div className="w-full max-w-md p-4">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <PackageOpen className="w-8 h-8 text-primary" />
+          <div className="w-20 h-20 rounded-2xl overflow-hidden mx-auto mb-4 bg-background flex items-center justify-center">
+            <img
+              src="/silverline-logo.png"
+              alt="Silverline Techno Management Services"
+              className="w-full h-full object-contain"
+            />
           </div>
           <h1 className="text-3xl font-display font-bold text-foreground">Silverline Techno Management Services</h1>
           <p className="text-muted-foreground mt-2">Sign in to manage your inventory</p>

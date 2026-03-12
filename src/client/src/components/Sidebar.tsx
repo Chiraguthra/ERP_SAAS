@@ -6,7 +6,6 @@ import {
   Package,
   Users,
   LogOut,
-  PackageOpen,
   Store,
   Banknote,
   FileText,
@@ -71,8 +70,12 @@ export function Sidebar({ className, mobile = false, onNavigate }: SidebarProps)
       )}
     >
       <div className="p-6 border-b flex items-center gap-3 shrink-0">
-        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-          <PackageOpen className="w-6 h-6 text-primary" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden bg-background flex items-center justify-center">
+          <img
+            src="/silverline-logo.png"
+            alt="Silverline Techno Management Services"
+            className="w-full h-full object-contain"
+          />
         </div>
         <div>
           <h1 className="font-display font-bold text-lg leading-none">SILVERLINE TECHNO</h1>

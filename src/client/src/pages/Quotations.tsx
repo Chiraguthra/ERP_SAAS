@@ -17,6 +17,7 @@ import { authFetch } from "@/lib/authFetch";
 import { Loader2, FileText, Settings2, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type QuotationDefaults = {
   buyer_name: string;
@@ -118,6 +119,8 @@ export default function Quotations() {
   ]);
 
   const [isDefaultsOpen, setIsDefaultsOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const defaultsQuery = useQuery({
     queryKey: ["/api/quotation-letter-defaults"],
@@ -659,80 +662,100 @@ export default function Quotations() {
               <FileText className="h-5 w-5" /> Saved quotations
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {quotationsQuery.isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead>ID</TableHead>
-                      <TableHead>Buyer</TableHead>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Download</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(quotationsQuery.data ?? []).map((q) => (
-                      <TableRow key={q.id}>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {q.id}
-                        </TableCell>
-                        <TableCell>{q.buyer_name ?? "—"}</TableCell>
-                        <TableCell>{q.subject ?? "—"}</TableCell>
-                        <TableCell>
-                          {q.created_at
-                            ? new Date(q.created_at).toLocaleDateString("en-GB")
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={async () => {
-                              try {
-                                const r = await authFetch(`/api/quotation-letters/${q.id}/pdf`);
-                                if (!r.ok) throw new Error("Failed to download PDF");
-                                const blob = await r.blob();
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = `Quotation-${String(q.id).padStart(3, "0")}.pdf`;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              } catch (e) {
-                                toast({
-                                  title: "Error",
-                                  description:
-                                    e instanceof Error ? e.message : "Download failed. Please try again.",
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            aria-label="Download quotation PDF"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
+              <>
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>ID</TableHead>
+                        <TableHead>Buyer</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Download</TableHead>
                       </TableRow>
-                    ))}
-                    {(quotationsQuery.data ?? []).length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className="text-center py-8 text-muted-foreground"
-                        >
-                          No quotations saved yet.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {(() => {
+                        const rows = quotationsQuery.data ?? [];
+                        const total = rows.length;
+                        const safePageSize = Math.max(1, pageSize);
+                        const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+                        const safePage = Math.min(Math.max(1, page), totalPages);
+                        const offset = (safePage - 1) * safePageSize;
+                        const paged = rows.slice(offset, offset + safePageSize);
+                        if (paged.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell
+                                colSpan={5}
+                                className="text-center py-8 text-muted-foreground"
+                              >
+                                No quotations saved yet.
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        return paged.map((q) => (
+                          <TableRow key={q.id}>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {q.id}
+                            </TableCell>
+                            <TableCell>{q.buyer_name ?? "—"}</TableCell>
+                            <TableCell>{q.subject ?? "—"}</TableCell>
+                            <TableCell>
+                              {q.created_at
+                                ? new Date(q.created_at).toLocaleDateString("en-GB")
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={async () => {
+                                  try {
+                                    const r = await authFetch(`/api/quotation-letters/${q.id}/pdf`);
+                                    if (!r.ok) throw new Error("Failed to download PDF");
+                                    const blob = await r.blob();
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = `Quotation-${String(q.id).padStart(3, "0")}.pdf`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  } catch (e) {
+                                    toast({
+                                      title: "Error",
+                                      description:
+                                        e instanceof Error ? e.message : "Download failed. Please try again.",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }}
+                                aria-label="Download quotation PDF"
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ));
+                      })()}
+                    </TableBody>
+                  </Table>
+                </div>
+                <DataTablePagination
+                  totalCount={(quotationsQuery.data ?? []).length}
+                  page={page}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              </>
             )}
           </CardContent>
         </Card>
