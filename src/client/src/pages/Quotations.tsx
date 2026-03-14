@@ -55,6 +55,7 @@ function parseProductRows(text: string): Array<[string, string, string, string]>
   const dataLines = lines.length > 1 ? lines.slice(1) : [];
 
   for (const line of dataLines) {
+    // Prefer pipe delimiter so Item names with spaces are preserved
     if (line.includes("|")) {
       const parts = line.split("|").map((part) => part.trim());
       if (parts.length >= 4) {
@@ -63,6 +64,7 @@ function parseProductRows(text: string): Array<[string, string, string, string]>
       }
     }
 
+    // Fallback: space-separated (e.g. legacy defaults)
     const tokens = line.split(/\s+/);
     if (!tokens.length) continue;
 
@@ -93,11 +95,11 @@ function buildProductDetails(rows: ProductRow[], defaultText?: string) {
     // Let backend fall back to defaults if nothing entered
     return defaultText ?? "";
   }
-  const header = "Sr. no. Item Rate Uom";
+  // Use pipe delimiter so Item names with spaces (e.g. "Tile 2 Adhesive") are not split
+  const header = "Sr. no.|Item|Rate|Uom";
   const lines = nonEmpty.map((r, idx) => {
     const sr = r.srNo.trim() || `${idx + 1}.`;
-    const parts = [sr, r.item.trim(), r.rate.trim(), r.uom.trim()].filter(Boolean);
-    return parts.join(" ");
+    return [sr, r.item.trim(), r.rate.trim(), r.uom.trim()].join("|");
   });
   return [header, ...lines].join("\n");
 }
