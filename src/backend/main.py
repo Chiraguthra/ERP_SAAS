@@ -252,6 +252,23 @@ if not is_sqlite:
     except Exception:
         pass  # Constraint doesn't exist or already dropped
 
+# Add quotation remarks columns to existing DBs (SQLite and PostgreSQL)
+_remarks_new_columns_sqlite = [
+    ("quotation_letter_defaults", "remarks", "TEXT"),
+    ("quotation_letters", "remarks", "TEXT"),
+]
+_remarks_new_columns_pg = [
+    ("quotation_letter_defaults", "remarks", "VARCHAR"),
+    ("quotation_letters", "remarks", "VARCHAR"),
+]
+for table_name, col_name, col_type in (_remarks_new_columns_sqlite if is_sqlite else _remarks_new_columns_pg):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+            conn.commit()
+    except Exception:
+        pass  # Column already exists or table not yet created
+
 app = FastAPI(title="Retail Management API")
 
 allowed_origins = [

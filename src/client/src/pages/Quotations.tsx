@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, FileText, Settings2, Download } from "lucide-react";
+import { Loader2, FileText, Settings2, Download, Edit, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DataTablePagination } from "@/components/DataTablePagination";
@@ -24,6 +24,7 @@ type QuotationDefaults = {
   buyer_address: string;
   subject: string;
   product_details: string;
+  remarks: string;
   terms_and_conditions: string;
   seller_name: string;
   seller_designation: string;
@@ -111,6 +112,7 @@ export default function Quotations() {
   const [buyerName, setBuyerName] = useState("");
   const [buyerAddress, setBuyerAddress] = useState("");
   const [subject, setSubject] = useState("");
+  const [remarks, setRemarks] = useState("");
   const [terms, setTerms] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerDesignation, setSellerDesignation] = useState("");
@@ -119,6 +121,8 @@ export default function Quotations() {
   const [productRows, setProductRows] = useState<ProductRow[]>([
     { srNo: "1.", item: "", rate: "", uom: "" },
   ]);
+
+  const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null);
 
   const [isDefaultsOpen, setIsDefaultsOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -173,6 +177,7 @@ export default function Quotations() {
         buyer_address: buyerAddress,
         subject,
         product_details: buildProductDetails(productRows, defaultsQuery.data?.product_details),
+        remarks,
         terms_and_conditions: terms,
         seller_name: sellerName,
         seller_designation: sellerDesignation,
@@ -216,6 +221,107 @@ export default function Quotations() {
     },
   });
 
+  const updateQuotationMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingQuotationId) throw new Error("No quotation selected for update");
+      const payload = {
+        buyer_name: buyerName,
+        buyer_address: buyerAddress,
+        subject,
+        product_details: buildProductDetails(productRows, defaultsQuery.data?.product_details),
+        remarks,
+        terms_and_conditions: terms,
+        seller_name: sellerName,
+        seller_designation: sellerDesignation,
+        seller_company: sellerCompany,
+        seller_phone: sellerPhone,
+      };
+      const r = await authFetch(`/api/quotation-letters/${editingQuotationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to update quotation");
+      }
+      return (await r.json()) as { id: number };
+    },
+    onSuccess: async (res) => {
+      setEditingQuotationId(null);
+      setShowPreview(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/quotation-letters"] });
+      try {
+        const r = await authFetch(`/api/quotation-letters/${res.id}/pdf`);
+        if (!r.ok) throw new Error("Failed to download PDF");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Quotation-${String(res.id).padStart(3, "0")}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: "Updated", description: "Quotation updated and PDF downloaded" });
+      } catch (e) {
+        toast({
+          title: "Partial success",
+          description:
+            e instanceof Error ? e.message : "Quotation updated but download failed. Try again from the list below.",
+        });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const handleEditQuotation = async (quotationId: number) => {
+    try {
+      const r = await authFetch(`/api/quotation-letters/${quotationId}`);
+      if (!r.ok) throw new Error("Failed to load quotation");
+      const q = (await r.json()) as {
+        buyer_name?: string | null;
+        buyer_address?: string | null;
+        subject?: string | null;
+        product_details?: string | null;
+        remarks?: string | null;
+        terms_and_conditions?: string | null;
+        seller_name?: string | null;
+        seller_designation?: string | null;
+        seller_company?: string | null;
+        seller_phone?: string | null;
+      };
+
+      setEditingQuotationId(quotationId);
+      setShowPreview(false);
+
+      setBuyerName(q.buyer_name ?? "");
+      setBuyerAddress(q.buyer_address ?? "");
+      setSubject(q.subject ?? "");
+      setRemarks(q.remarks ?? "");
+      setTerms(q.terms_and_conditions ?? "");
+      setSellerName(q.seller_name ?? "");
+      setSellerDesignation(q.seller_designation ?? "");
+      setSellerCompany(q.seller_company ?? "");
+      setSellerPhone(q.seller_phone ?? "");
+
+      const parsed = parseProductRows(q.product_details ?? "");
+      const rows = parsed.slice(1).map(([srNo, item, rate, uom]) => ({
+        srNo,
+        item,
+        rate,
+        uom,
+      }));
+      setProductRows(rows.length ? rows : [{ srNo: "1.", item: "", rate: "", uom: "" }]);
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Failed to edit quotation",
+        variant: "destructive",
+      });
+    }
+  };
+
   const effective = useMemo(() => {
     const d = defaultsQuery.data;
     return {
@@ -223,6 +329,7 @@ export default function Quotations() {
       buyer_address: buyerAddress || d?.buyer_address || "",
       subject: subject || d?.subject || "",
       product_details: buildProductDetails(productRows, d?.product_details),
+      remarks: remarks || d?.remarks || "",
       terms_and_conditions: terms || d?.terms_and_conditions || "",
       seller_name: sellerName || d?.seller_name || "",
       seller_designation: sellerDesignation || d?.seller_designation || "",
@@ -235,6 +342,7 @@ export default function Quotations() {
     buyerAddress,
     subject,
     productRows,
+    remarks,
     terms,
     sellerName,
     sellerDesignation,
@@ -251,6 +359,21 @@ export default function Quotations() {
 
   const handleViewQuotation = () => {
     setShowPreview(true);
+  };
+
+  const resetQuotationForm = () => {
+    setEditingQuotationId(null);
+    setBuyerName("");
+    setBuyerAddress("");
+    setSubject("");
+    setRemarks("");
+    setTerms("");
+    setSellerName("");
+    setSellerDesignation("");
+    setSellerCompany("");
+    setSellerPhone("");
+    setProductRows([{ srNo: "1.", item: "", rate: "", uom: "" }]);
+    setShowPreview(false);
   };
 
   const defaults = defaultsQuery.data;
@@ -314,6 +437,14 @@ export default function Quotations() {
                         defaultValue={defaults.product_details}
                         rows={4}
                         onBlur={(e) => (defaults.product_details = e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Remarks</label>
+                      <Textarea
+                        defaultValue={defaults.remarks}
+                        rows={3}
+                        onBlur={(e) => (defaults.remarks = e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -511,6 +642,15 @@ export default function Quotations() {
                 </div>
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-medium">Remarks</label>
+                <Textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  placeholder={defaults?.remarks || ""}
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Terms and Conditions</label>
                 <Textarea
                   value={terms}
@@ -560,14 +700,26 @@ export default function Quotations() {
                 </Button>
                 <Button
                   type="button"
-                  onClick={() => createQuotationMutation.mutate()}
-                  disabled={createQuotationMutation.isPending}
+                  onClick={() => {
+                    if (editingQuotationId) {
+                      updateQuotationMutation.mutate();
+                    } else {
+                      createQuotationMutation.mutate();
+                    }
+                  }}
+                  disabled={createQuotationMutation.isPending || updateQuotationMutation.isPending}
                 >
-                  {createQuotationMutation.isPending && (
+                  {(editingQuotationId ? updateQuotationMutation.isPending : createQuotationMutation.isPending) && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  Save & Download PDF
+                  {editingQuotationId ? "Update & Download PDF" : "Save & Download PDF"}
                 </Button>
+                {editingQuotationId && (
+                  <Button type="button" variant="outline" onClick={resetQuotationForm}>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel edit
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -634,6 +786,12 @@ export default function Quotations() {
                       </table>
                     </div>
 
+                    {effective.remarks && (
+                      <>
+                        <p className="mt-4 font-bold">Remarks –</p>
+                        <div className="whitespace-pre-line">{effective.remarks}</div>
+                      </>
+                    )}
                     <p className="mt-4 font-bold">Terms and Conditions –</p>
                     <div className="whitespace-pre-line">
                       {effective.terms_and_conditions}
@@ -679,7 +837,7 @@ export default function Quotations() {
                         <TableHead>Buyer</TableHead>
                         <TableHead>Subject</TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Download</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -716,33 +874,45 @@ export default function Quotations() {
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={async () => {
-                                  try {
-                                    const r = await authFetch(`/api/quotation-letters/${q.id}/pdf`);
-                                    if (!r.ok) throw new Error("Failed to download PDF");
-                                    const blob = await r.blob();
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement("a");
-                                    a.href = url;
-                                    a.download = `Quotation-${String(q.id).padStart(3, "0")}.pdf`;
-                                    a.click();
-                                    URL.revokeObjectURL(url);
-                                  } catch (e) {
-                                    toast({
-                                      title: "Error",
-                                      description:
-                                        e instanceof Error ? e.message : "Download failed. Please try again.",
-                                      variant: "destructive",
-                                    });
-                                  }
-                                }}
-                                aria-label="Download quotation PDF"
-                              >
-                                <Download className="w-4 h-4" />
-                              </Button>
+                              <div className="flex justify-end items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditQuotation(q.id)}
+                                  aria-label="Edit quotation"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={async () => {
+                                    try {
+                                      const r = await authFetch(`/api/quotation-letters/${q.id}/pdf`);
+                                      if (!r.ok) throw new Error("Failed to download PDF");
+                                      const blob = await r.blob();
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement("a");
+                                      a.href = url;
+                                      a.download = `Quotation-${String(q.id).padStart(3, "0")}.pdf`;
+                                      a.click();
+                                      URL.revokeObjectURL(url);
+                                    } catch (e) {
+                                      toast({
+                                        title: "Error",
+                                        description:
+                                          e instanceof Error
+                                            ? e.message
+                                            : "Download failed. Please try again.",
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  }}
+                                  aria-label="Download quotation PDF"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ));

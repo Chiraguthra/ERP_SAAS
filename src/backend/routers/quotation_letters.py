@@ -30,6 +30,7 @@ class QuotationLetterBody:
     buyer_address: Optional[str]
     subject: Optional[str]
     product_details: Optional[str]
+    remarks: Optional[str]
     terms_and_conditions: Optional[str]
     seller_name: Optional[str]
     seller_designation: Optional[str]
@@ -90,6 +91,7 @@ def _get_or_create_defaults(db: Session) -> models.QuotationLetterDefaults:
         buyer_address="A-29, New friends Colony,\nBhopal",
         subject="Quotation for your site as discussed - reg.",
         product_details="Sr. no. Item Rate Uom\n1. xyz 100 Per Nos.",
+        remarks="",
         terms_and_conditions=(
             "1. GST Extra\n"
             "2. Freight: Extra/ F.O.R (option to be given)\n"
@@ -118,6 +120,7 @@ def get_quotation_letter_defaults(
         "buyer_address": d.buyer_address or "",
         "subject": d.subject or "",
         "product_details": d.product_details or "",
+        "remarks": d.remarks or "",
         "terms_and_conditions": d.terms_and_conditions or "",
         "seller_name": d.seller_name or "",
         "seller_designation": d.seller_designation or "",
@@ -138,6 +141,7 @@ def update_quotation_letter_defaults(
         "buyer_address",
         "subject",
         "product_details",
+        "remarks",
         "terms_and_conditions",
         "seller_name",
         "seller_designation",
@@ -193,6 +197,7 @@ def create_quotation_letter(
         buyer_address=pick("buyer_address"),
         subject=pick("subject"),
         product_details=pick("product_details"),
+        remarks=pick("remarks"),
         terms_and_conditions=pick("terms_and_conditions"),
         seller_name=pick("seller_name"),
         seller_designation=pick("seller_designation"),
@@ -208,6 +213,63 @@ def create_quotation_letter(
         "subject": q.subject,
         "created_at": q.created_at.isoformat() if q.created_at else None,
     }
+
+
+@router.get("/api/quotation-letters/{letter_id}")
+def get_quotation_letter(
+    letter_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    q = db.query(models.QuotationLetter).filter(models.QuotationLetter.id == letter_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    return {
+        "id": q.id,
+        "buyer_name": q.buyer_name,
+        "buyer_address": q.buyer_address,
+        "subject": q.subject,
+        "product_details": q.product_details,
+        "remarks": q.remarks,
+        "terms_and_conditions": q.terms_and_conditions,
+        "seller_name": q.seller_name,
+        "seller_designation": q.seller_designation,
+        "seller_company": q.seller_company,
+        "seller_phone": q.seller_phone,
+        "created_at": q.created_at.isoformat() if q.created_at else None,
+    }
+
+
+@router.patch("/api/quotation-letters/{letter_id}")
+def update_quotation_letter(
+    letter_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    q = db.query(models.QuotationLetter).filter(models.QuotationLetter.id == letter_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    for field in [
+        "buyer_name",
+        "buyer_address",
+        "subject",
+        "product_details",
+        "remarks",
+        "terms_and_conditions",
+        "seller_name",
+        "seller_designation",
+        "seller_company",
+        "seller_phone",
+    ]:
+        if field in body:
+            val = (body.get(field) or "").strip()
+            setattr(q, field, val or None)
+
+    db.commit()
+    db.refresh(q)
+    return {"id": q.id}
 
 
 def _render_pdf(q: models.QuotationLetter) -> bytes:
@@ -301,6 +363,20 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     _, table_h = table.wrapOn(c, width - 100, available_height)
     table.drawOn(c, x_left, y - table_h)
     y = y - table_h - 20
+
+    # ── REMARKS ──
+    if q.remarks:
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x_left, y, "Remarks \u2013")
+        c.setFont("Helvetica", 10)
+        y -= line_height
+        for line in q.remarks.splitlines():
+            if line.strip():
+                wrapped_lines = simpleSplit(line.strip(), "Helvetica", 10, width - 110)
+                for wrapped_line in wrapped_lines:
+                    c.drawString(x_left, y, wrapped_line)
+                    y -= line_height * 0.95
+        y -= line_height * 0.6
 
     # ── TERMS AND CONDITIONS ──
     c.setFont("Helvetica-Bold", 10)
