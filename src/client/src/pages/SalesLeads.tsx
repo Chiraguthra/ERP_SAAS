@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,7 @@ import {
 import { DataTablePagination } from "@/components/DataTablePagination";
 import { Label } from "@/components/ui/label";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, Plus, UserPlus, Edit, Download, Search, Trash2, ChevronDown } from "lucide-react";
+import { Loader2, Plus, UserPlus, Edit, Download, Search, Trash2, ChevronDown, MessageSquare } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -43,6 +44,7 @@ type SalesLeadEntry = {
   phone: string | null;
   city: string | null;
   assigned: string | null;
+  remarks?: string | null;
 };
 
 type SalesLeadForm = {
@@ -73,6 +75,9 @@ export default function SalesLeads() {
   const [filterCompany, setFilterCompany] = useState<string>("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [isRemarksOpen, setIsRemarksOpen] = useState(false);
+  const [remarksLeadId, setRemarksLeadId] = useState<number | null>(null);
+  const [remarksValue, setRemarksValue] = useState("");
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
 
   const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
@@ -145,6 +150,30 @@ export default function SalesLeads() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
       toast({ title: "Deleted", description: "Lead deleted" });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const remarksMutation = useMutation({
+    mutationFn: async ({ id, remarks }: { id: number; remarks: string }) => {
+      const r = await authFetch(`/api/sales-leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to save remarks");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-leads"] });
+      setIsRemarksOpen(false);
+      setRemarksLeadId(null);
+      setRemarksValue("");
+      toast({ title: "Saved", description: "Remarks updated" });
     },
     onError: (e: Error) =>
       toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -305,6 +334,12 @@ export default function SalesLeads() {
   const handleDelete = (id: number) => {
     if (!confirm("Are you sure you want to delete this lead?")) return;
     deleteMutation.mutate(id);
+  };
+
+  const openRemarksDialog = (row: SalesLeadEntry) => {
+    setRemarksLeadId(row.id);
+    setRemarksValue(row.remarks ?? "");
+    setIsRemarksOpen(true);
   };
 
   useEffect(() => {
@@ -527,6 +562,37 @@ export default function SalesLeads() {
             </div>
           </CardHeader>
           <CardContent>
+            <Dialog open={isRemarksOpen} onOpenChange={setIsRemarksOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Lead Remarks</DialogTitle>
+                  <DialogDescription>Add or update remarks for this CRM record.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-2">
+                  <Label htmlFor="lead-remarks">Remarks</Label>
+                  <Textarea
+                    id="lead-remarks"
+                    value={remarksValue}
+                    onChange={(e) => setRemarksValue(e.target.value)}
+                    rows={5}
+                    placeholder="Enter remarks"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (!remarksLeadId) return;
+                      remarksMutation.mutate({ id: remarksLeadId, remarks: remarksValue.trim() });
+                    }}
+                    disabled={remarksMutation.isPending || !remarksLeadId}
+                  >
+                    {remarksMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Save remarks
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             {leadsQuery.isLoading && (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -561,6 +627,14 @@ export default function SalesLeads() {
                           <TableCell>{row.city ?? "—"}</TableCell>
                         <TableCell>{row.assigned ?? "—"}</TableCell>
                         <TableCell className="text-right space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openRemarksDialog(row)}
+                            aria-label="Remarks"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(row)} aria-label="Edit">
                             <Edit className="w-4 h-4" />
                           </Button>

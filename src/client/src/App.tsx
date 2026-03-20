@@ -96,12 +96,20 @@ function AppRoutes() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
 
+  const isOrdersPath = (path: string) => path === "/orders" || path.startsWith("/orders/");
+  const isQuotationPath = (path: string) => path === "/quotations";
+  const isCrmPath = (path: string) => path === "/sales-leads";
+  const isAllowedForOrdersQuotationOnlyRole = (path: string) =>
+    path === "/login" || isOrdersPath(path) || isQuotationPath(path);
+  const isAllowedForSalesRole = (path: string) =>
+    path === "/login" || isOrdersPath(path) || isQuotationPath(path) || isCrmPath(path);
+
   const getDefaultRouteForRole = (role?: string) => {
     const r = (role || "").toLowerCase();
     if (r === "admin") return "/";
     if (r === "sales") return "/sales-leads";
+    if (r === "accountant" || r === "accounts") return "/orders";
     if (r === "logistics") return "/logistics";
-    if (r === "accountant") return "/finance";
     return "/orders";
   };
 
@@ -120,8 +128,14 @@ function AppRoutes() {
     );
   }
   const userRole = (user?.role ?? "").toLowerCase();
-  if (userRole === "sales" && location !== "/sales-leads" && location !== "/login") {
+  if (userRole === "sales" && !isAllowedForSalesRole(location)) {
     return <Redirect to="/sales-leads" />;
+  }
+  if (
+    (userRole === "accountant" || userRole === "accounts") &&
+    !isAllowedForOrdersQuotationOnlyRole(location)
+  ) {
+    return <Redirect to="/orders" />;
   }
   if (location === "/" && userRole !== "admin") {
     return <Redirect to={getDefaultRouteForRole(user?.role)} />;

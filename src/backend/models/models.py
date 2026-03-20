@@ -123,6 +123,7 @@ class SalesLead(Base):
     phone = Column(String, nullable=True)
     city = Column(String, nullable=True)
     assigned = Column(String, nullable=True)
+    remarks = Column(String, nullable=True)
 
 
 class QuotationLetterDefaults(Base):

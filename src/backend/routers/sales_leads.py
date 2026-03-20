@@ -19,6 +19,7 @@ class SalesLeadCreate(BaseModel):
     phone: Optional[str] = None
     city: Optional[str] = None
     assigned: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 class SalesLeadUpdate(BaseModel):
@@ -29,6 +30,7 @@ class SalesLeadUpdate(BaseModel):
     phone: Optional[str] = None
     city: Optional[str] = None
     assigned: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 def _to_item(lead: models.SalesLead) -> dict:
@@ -41,6 +43,7 @@ def _to_item(lead: models.SalesLead) -> dict:
         "phone": lead.phone,
         "city": lead.city,
         "assigned": lead.assigned,
+        "remarks": lead.remarks,
     }
 
 
@@ -109,6 +112,7 @@ def create_sales_lead(
         phone=body.phone,
         city=body.city,
         assigned=body.assigned,
+        remarks=body.remarks,
     )
     db.add(lead)
     db.commit()
@@ -140,6 +144,8 @@ def update_sales_lead(
         lead.city = body.city
     if body.assigned is not None:
         lead.assigned = body.assigned
+    if body.remarks is not None:
+        lead.remarks = body.remarks
     db.commit()
     db.refresh(lead)
     return _to_item(lead)

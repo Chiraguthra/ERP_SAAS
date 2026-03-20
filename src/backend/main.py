@@ -269,6 +269,15 @@ for table_name, col_name, col_type in (_remarks_new_columns_sqlite if is_sqlite 
     except Exception:
         pass  # Column already exists or table not yet created
 
+# Add sales lead remarks column (existing DB compatibility)
+try:
+    with engine.connect() as conn:
+        col_type = "TEXT" if is_sqlite else "VARCHAR"
+        conn.execute(text(f"ALTER TABLE sales_leads ADD COLUMN remarks {col_type}"))
+        conn.commit()
+except Exception:
+    pass  # Column already exists
+
 app = FastAPI(title="Retail Management API")
 
 allowed_origins = [
