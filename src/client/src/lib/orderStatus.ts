@@ -1,6 +1,7 @@
 /** Allowed order statuses: value stored in API, label shown in UI */
 export const ORDER_STATUSES = [
   { value: "pending", label: "Pending" },
+  { value: "partial_dispatched", label: "Partial Dispatched" },
   { value: "delivered", label: "Delivered" },
   { value: "dispatched", label: "Dispatched" },
   { value: "return", label: "Return" },

@@ -107,6 +107,7 @@ class OrderItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
     price = Column(Numeric, nullable=False)
+    dispatched = Column(Boolean, default=False, nullable=False)
     
     order = relationship("Order", back_populates="items")
     product = relationship("Product")

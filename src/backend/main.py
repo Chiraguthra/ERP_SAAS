@@ -278,6 +278,15 @@ try:
 except Exception:
     pass  # Column already exists
 
+# Add dispatch marker column on order items
+try:
+    with engine.connect() as conn:
+        col_type = "INTEGER DEFAULT 0" if is_sqlite else "BOOLEAN DEFAULT FALSE"
+        conn.execute(text(f"ALTER TABLE order_items ADD COLUMN dispatched {col_type}"))
+        conn.commit()
+except Exception:
+    pass  # Column already exists
+
 app = FastAPI(title="Retail Management API")
 
 allowed_origins = [

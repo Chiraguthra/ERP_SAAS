@@ -181,6 +181,24 @@ export function useOrder(id: number) {
     },
   });
 
+  const updateDispatchItemsMutation = useMutation({
+    mutationFn: async (payload: { dispatchedItemIds: number[] }) => {
+      const url = buildUrl("/api/orders/:id/dispatch-items", { id });
+      const res = await authFetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to update dispatch items");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.orders.get.path, id] });
+      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.analytics.get.path] });
+    },
+  });
+
   return {
     order: orderQuery.data,
     isLoading: orderQuery.isLoading,
@@ -188,5 +206,7 @@ export function useOrder(id: number) {
     isUpdating: updateStatusMutation.isPending,
     updateOrder: updateOrderMutation.mutate,
     isUpdatingOrder: updateOrderMutation.isPending,
+    updateDispatchItems: updateDispatchItemsMutation.mutate,
+    isUpdatingDispatchItems: updateDispatchItemsMutation.isPending,
   };
 }

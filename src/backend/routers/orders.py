@@ -40,6 +40,26 @@ class OrderCreate(BaseModel):
     contactNumber: Optional[str] = None
 
 
+def _sync_order_dispatch_status(order: models.Order):
+    """Set order status based on item-level dispatch progression."""
+    current = (order.status or "").strip().lower()
+    if current in {"delivered", "return"}:
+        return
+
+    items = list(order.items or [])
+    if not items:
+        order.status = "pending"
+        return
+
+    dispatched_count = sum(1 for it in items if bool(getattr(it, "dispatched", False)))
+    if dispatched_count == 0:
+        order.status = "pending"
+    elif dispatched_count < len(items):
+        order.status = "partial_dispatched"
+    else:
+        order.status = "dispatched"
+
+
 def _customer_dict(c):
     """Serialize customer for order responses; uses full customer schema."""
     return _customer_to_response(c)
@@ -85,6 +105,7 @@ def _order_item_to_response(item):
         "productId": item.product_id,
         "quantity": int(item.quantity) if item.quantity is not None else 0,
         "price": price_val,
+        "dispatched": bool(getattr(item, "dispatched", False)),
         "product": product_payload,
     }
 
@@ -255,8 +276,16 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db), current_user
         db.add(db_order)
         db.flush()  # Ensure order id is available before creating items
         for product_id, qty, price in item_rows:
-            db_item = models.OrderItem(order_id=db_order.id, product_id=product_id, quantity=qty, price=price)
+            db_item = models.OrderItem(
+                order_id=db_order.id,
+                product_id=product_id,
+                quantity=qty,
+                price=price,
+                dispatched=False,
+            )
             db.add(db_item)
+        db.flush()
+        _sync_order_dispatch_status(db_order)
         db.commit()
     except HTTPException:
         db.rollback()
@@ -343,7 +372,13 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
                     raise HTTPException(400, f"Product {pid} not found")
                 rate = _safe_float(row.get("price")) if row.get("price") is not None else _safe_float(prod.price)
                 subtotal += rate * qty
-                db_item = models.OrderItem(order_id=db_order.id, product_id=pid, quantity=qty, price=rate)
+                db_item = models.OrderItem(
+                    order_id=db_order.id,
+                    product_id=pid,
+                    quantity=qty,
+                    price=rate,
+                    dispatched=False,
+                )
                 db.add(db_item)
             freight = _safe_float(db_order.freight_charges)
             cgst_pct = _safe_float(db_order.cgst_percent) if db_order.cgst_percent is not None else 0
@@ -376,6 +411,7 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
             rounded_total = _round_total(raw_total)
             db_order.total_amount = rounded_total
             db_order.adjustments = sum_before_adj - rounded_total
+        _sync_order_dispatch_status(db_order)
         db.commit()
     except HTTPException:
         db.rollback()
@@ -399,6 +435,40 @@ def update_order_status(id: int, status_update: dict, db: Session = Depends(get_
     db.commit()
     db.refresh(db_order)
     return db_order
+
+
+@router.patch("/orders/{id}/dispatch-items")
+def update_order_dispatch_items(
+    id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    order = (
+        db.query(models.Order)
+        .options(joinedload(models.Order.items))
+        .filter(models.Order.id == id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    ids = payload.get("dispatchedItemIds") or []
+    if not isinstance(ids, list):
+        raise HTTPException(400, "dispatchedItemIds must be a list")
+    dispatched_ids = {int(x) for x in ids if isinstance(x, (int, float, str)) and str(x).strip().isdigit()}
+
+    for item in order.items:
+        item.dispatched = item.id in dispatched_ids
+
+    _sync_order_dispatch_status(order)
+    db.commit()
+    db.refresh(order)
+    return {
+        "id": order.id,
+        "status": order.status,
+        "dispatchedItemIds": [item.id for item in order.items if bool(item.dispatched)],
+    }
 
 
 @router.delete("/orders/{id}")

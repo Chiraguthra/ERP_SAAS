@@ -41,6 +41,7 @@ export default function Orders() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [viewItemsOrderId, setViewItemsOrderId] = useState<number | null>(null);
   const [isItemsDialogOpen, setIsItemsDialogOpen] = useState(false);
+  const [dispatchedSelections, setDispatchedSelections] = useState<Record<number, boolean>>({});
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [billId, setBillId] = useState<string>("");
@@ -65,7 +66,20 @@ export default function Orders() {
   });
   const { customers } = useCustomers({ q: customerSearch, page: 1, pageSize: 200 });
   const { products } = useProducts({ page: 1, pageSize: 200 });
-  const { order: itemsOrder, isLoading: isLoadingItemsOrder } = useOrder(viewItemsOrderId ?? 0);
+  const {
+    order: itemsOrder,
+    isLoading: isLoadingItemsOrder,
+    updateDispatchItems,
+    isUpdatingDispatchItems,
+  } = useOrder(viewItemsOrderId ?? 0);
+
+  useEffect(() => {
+    const next: Record<number, boolean> = {};
+    (itemsOrder?.items ?? []).forEach((item: any) => {
+      next[item.id] = !!item.dispatched;
+    });
+    setDispatchedSelections(next);
+  }, [itemsOrder]);
 
   const getCustomerDisplayName = (customer: { name?: string | null; company?: string | null; contactPerson?: string | null; emailId?: string | null }) => {
     return customer.name?.trim() || customer.company?.trim() || customer.contactPerson?.trim() || customer.emailId?.trim() || "Unnamed customer";
@@ -669,6 +683,7 @@ export default function Orders() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
+                      <TableHead>Dispatched</TableHead>
                       <TableHead>Product</TableHead>
                       <TableHead>Qty</TableHead>
                     </TableRow>
@@ -677,6 +692,18 @@ export default function Orders() {
                     {(itemsOrder?.items ?? []).map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell>
+                          <input
+                            type="checkbox"
+                            checked={!!dispatchedSelections[item.id]}
+                            onChange={(e) =>
+                              setDispatchedSelections((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.checked,
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
                           {item.product?.name || item.product?.sku || `#${item.productId}`}
                         </TableCell>
                         <TableCell>{item.quantity}</TableCell>
@@ -684,7 +711,7 @@ export default function Orders() {
                     ))}
                     {(itemsOrder?.items ?? []).length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={2} className="text-center py-6 text-muted-foreground">
+                        <TableCell colSpan={3} className="text-center py-6 text-muted-foreground">
                           No products on this order.
                         </TableCell>
                       </TableRow>
@@ -693,6 +720,37 @@ export default function Orders() {
                 </Table>
               </div>
             )}
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  const ids = Object.entries(dispatchedSelections)
+                    .filter(([, checked]) => checked)
+                    .map(([id]) => Number(id));
+                  updateDispatchItems(
+                    { dispatchedItemIds: ids },
+                    {
+                      onSuccess: () => {
+                        setIsItemsDialogOpen(false);
+                        setViewItemsOrderId(null);
+                        toast({ title: "Updated", description: "Dispatch items updated" });
+                      },
+                      onError: (err) => {
+                        toast({
+                          title: "Error",
+                          description: err.message,
+                          variant: "destructive",
+                        });
+                      },
+                    }
+                  );
+                }}
+                disabled={isUpdatingDispatchItems || isLoadingItemsOrder}
+              >
+                {isUpdatingDispatchItems && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Save dispatch selection
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
