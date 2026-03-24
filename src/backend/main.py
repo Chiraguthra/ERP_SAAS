@@ -256,10 +256,14 @@ if not is_sqlite:
 _remarks_new_columns_sqlite = [
     ("quotation_letter_defaults", "remarks", "TEXT"),
     ("quotation_letters", "remarks", "TEXT"),
+    ("quotation_letter_defaults", "bank_details", "TEXT"),
+    ("quotation_letters", "bank_details", "TEXT"),
 ]
 _remarks_new_columns_pg = [
     ("quotation_letter_defaults", "remarks", "VARCHAR"),
     ("quotation_letters", "remarks", "VARCHAR"),
+    ("quotation_letter_defaults", "bank_details", "VARCHAR"),
+    ("quotation_letters", "bank_details", "VARCHAR"),
 ]
 for table_name, col_name, col_type in (_remarks_new_columns_sqlite if is_sqlite else _remarks_new_columns_pg):
     try:

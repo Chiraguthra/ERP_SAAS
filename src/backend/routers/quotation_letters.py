@@ -15,6 +15,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.platypus import Table, TableStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 
@@ -25,6 +27,45 @@ TOP_IMAGE_PATH = Path(__file__).resolve().parents[1] / "assets" / "quotation-top
 BOTTOM_IMAGE_PATH = Path(__file__).resolve().parents[1] / "assets" / "quotation-bottom.png"
 
 
+def _pdf_safe(text: str) -> str:
+    """Keep text intact (including ₹) for unicode-capable fonts."""
+    return text or ""
+
+
+def _resolve_pdf_fonts() -> tuple[str, str]:
+    """
+    Register and return unicode-capable font names when available.
+    Falls back to Times fonts if TTF files are unavailable.
+    """
+    regular = "Times-Roman"
+    bold = "Times-Bold"
+
+    font_candidates = [
+        # Common Linux paths (container/host)
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+        # Common Windows paths (local development)
+        ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+    ]
+
+    for regular_path, bold_path in font_candidates:
+        try:
+            if Path(regular_path).exists():
+                pdfmetrics.registerFont(TTFont("ERPUnicodeRegular", regular_path))
+                regular = "ERPUnicodeRegular"
+            if Path(bold_path).exists():
+                pdfmetrics.registerFont(TTFont("ERPUnicodeBold", bold_path))
+                bold = "ERPUnicodeBold"
+            if regular.startswith("ERPUnicode"):
+                if not bold.startswith("ERPUnicode"):
+                    bold = regular
+                return regular, bold
+        except Exception:
+            continue
+
+    return regular, bold
+
+
 class QuotationLetterBody:
     buyer_name: Optional[str]
     buyer_address: Optional[str]
@@ -32,6 +73,7 @@ class QuotationLetterBody:
     product_details: Optional[str]
     remarks: Optional[str]
     terms_and_conditions: Optional[str]
+    bank_details: Optional[str]
     seller_name: Optional[str]
     seller_designation: Optional[str]
     seller_company: Optional[str]
@@ -49,7 +91,7 @@ def _parse_product_rows(text: str) -> list[list[str]]:
         if "|" in line:
             parts = [p.strip() for p in line.split("|")]
             if len(parts) >= 4:
-                rows.append(parts[:4])
+                rows.append([_pdf_safe(parts[0]), _pdf_safe(parts[1]), _pdf_safe(parts[2]), _pdf_safe(parts[3])])
                 continue
 
         tokens = line.split()
@@ -62,13 +104,13 @@ def _parse_product_rows(text: str) -> list[list[str]]:
             -1,
         )
         if rate_idx == -1:
-            rows.append([sr_no, " ".join(tokens[1:]), "", ""])
+            rows.append([_pdf_safe(sr_no), _pdf_safe(" ".join(tokens[1:])), "", ""])
             continue
 
-        item_name = " ".join(tokens[1:rate_idx])
-        rate = tokens[rate_idx]
-        uom = " ".join(tokens[rate_idx + 1 :])
-        rows.append([sr_no, item_name, rate, uom])
+        item_name = _pdf_safe(" ".join(tokens[1:rate_idx]))
+        rate = _pdf_safe(tokens[rate_idx])
+        uom = _pdf_safe(" ".join(tokens[rate_idx + 1 :]))
+        rows.append([_pdf_safe(sr_no), item_name, rate, uom])
 
     if len(rows) == 1:
         rows.append(["1.", "", "", ""])
@@ -98,6 +140,12 @@ def _get_or_create_defaults(db: Session) -> models.QuotationLetterDefaults:
             "3. Payment Terms: as mutually discussed\n"
             "4. Delivery Time: 00 working Days ( to be filled)"
         ),
+        bank_details=(
+            "Beneficiary Name: SILVERLINE TECHNO MANAGEMENT SERVICES\n"
+            "Account Number: \n"
+            "IFSC Code: \n"
+            "Branch: "
+        ),
         seller_name="Nimish Gera",
         seller_designation="Partner",
         seller_company="SilverLine Techno Management Services",
@@ -122,6 +170,7 @@ def get_quotation_letter_defaults(
         "product_details": d.product_details or "",
         "remarks": d.remarks or "",
         "terms_and_conditions": d.terms_and_conditions or "",
+        "bank_details": d.bank_details or "",
         "seller_name": d.seller_name or "",
         "seller_designation": d.seller_designation or "",
         "seller_company": d.seller_company or "",
@@ -143,6 +192,7 @@ def update_quotation_letter_defaults(
         "product_details",
         "remarks",
         "terms_and_conditions",
+        "bank_details",
         "seller_name",
         "seller_designation",
         "seller_company",
@@ -199,6 +249,7 @@ def create_quotation_letter(
         product_details=pick("product_details"),
         remarks=pick("remarks"),
         terms_and_conditions=pick("terms_and_conditions"),
+        bank_details=pick("bank_details"),
         seller_name=pick("seller_name"),
         seller_designation=pick("seller_designation"),
         seller_company=pick("seller_company"),
@@ -232,6 +283,7 @@ def get_quotation_letter(
         "product_details": q.product_details,
         "remarks": q.remarks,
         "terms_and_conditions": q.terms_and_conditions,
+        "bank_details": q.bank_details,
         "seller_name": q.seller_name,
         "seller_designation": q.seller_designation,
         "seller_company": q.seller_company,
@@ -258,6 +310,7 @@ def update_quotation_letter(
         "product_details",
         "remarks",
         "terms_and_conditions",
+        "bank_details",
         "seller_name",
         "seller_designation",
         "seller_company",
@@ -279,7 +332,10 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
 
     x_left = 50
     x_right = width - 50
-    line_height = 16
+    body_font = 11
+    table_font = 10
+    line_height = 17
+    font_regular, font_bold = _resolve_pdf_fonts()
 
     # Header image from provided asset (flush to top)
     y = height
@@ -304,32 +360,37 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     fy = f"{fy_year}-{(fy_year + 1) % 100:02d}"
     ref_no = f"{q.id:03d}"
 
-    c.setFont("Helvetica", 10)
+    c.setFont(font_regular, body_font)
     c.drawString(x_left, y, f"Ref: SLTMS/ {fy}/ {ref_no}")
     c.drawRightString(x_right, y, f"Dated: {today.strftime('%d-%m-%Y')}")
     y -= line_height * 1.5
 
+    # ── QUOTATION HEADING ──
+    c.setFont(font_bold, 15)
+    c.drawCentredString(width / 2, y, "QUOTATION")
+    y -= line_height * 1.2
+
     # ── TO BLOCK ──
-    c.setFont("Helvetica", 10)
+    c.setFont(font_regular, body_font)
     c.drawString(x_left, y, "To,")
     y -= line_height
     if q.buyer_name:
-        c.setFont("Helvetica-Bold", 10)
+        c.setFont(font_bold, body_font)
         c.drawString(x_left, y, q.buyer_name)
-        c.setFont("Helvetica", 10)
+        c.setFont(font_regular, body_font)
         y -= line_height
     if q.buyer_address:
         for line in (q.buyer_address or "").splitlines():
             if line.strip():
-                c.drawString(x_left, y, line.strip())
+                c.drawString(x_left, y, _pdf_safe(line.strip()))
                 y -= line_height
 
     y -= line_height * 0.6
     # ── SUBJECT ──
     if q.subject:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(x_left, y, f"Sub: {q.subject}")
-        c.setFont("Helvetica", 10)
+        c.setFont(font_bold, body_font)
+        c.drawString(x_left, y, _pdf_safe(f"Sub: {q.subject}"))
+        c.setFont(font_regular, body_font)
         y -= line_height * 1.4
 
     c.drawString(x_left, y, "Dear Sir,")
@@ -346,9 +407,9 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     table.setStyle(
         TableStyle(
             [
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTNAME", (0, 0), (-1, 0), font_bold),
+                ("FONTNAME", (0, 1), (-1, -1), font_regular),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
                 ("GRID", (0, 0), (-1, -1), 0.6, colors.black),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -366,39 +427,39 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
 
     # ── REMARKS ──
     if q.remarks:
-        c.setFont("Helvetica-Bold", 10)
+        c.setFont(font_bold, body_font)
         c.drawString(x_left, y, "Remarks \u2013")
-        c.setFont("Helvetica", 10)
+        c.setFont(font_regular, body_font)
         y -= line_height
         for line in q.remarks.splitlines():
             if line.strip():
-                wrapped_lines = simpleSplit(line.strip(), "Helvetica", 10, width - 110)
+                wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 110)
                 for wrapped_line in wrapped_lines:
                     c.drawString(x_left, y, wrapped_line)
                     y -= line_height * 0.95
         y -= line_height * 0.6
 
     # ── TERMS AND CONDITIONS ──
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(font_bold, body_font)
     c.drawString(x_left, y, "Terms and Conditions \u2013")
-    c.setFont("Helvetica", 10)
+    c.setFont(font_regular, body_font)
     y -= line_height
     if q.terms_and_conditions:
         for line in q.terms_and_conditions.splitlines():
             if line.strip():
-                wrapped_lines = simpleSplit(line.strip(), "Helvetica", 10, width - 110)
+                wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 110)
                 for wrapped_line in wrapped_lines:
                     c.drawString(x_left, y, wrapped_line)
                     y -= line_height * 0.95
 
-    y -= line_height * 1.4
-    c.drawString(x_left, y, "Hoping to have positive business with you.")
+    y -= line_height * 1.2
+    c.drawString(x_left, y, "For any clarification or order confirmation, please feel free to contact us.")
     y -= line_height * 1.3
     c.drawString(x_left, y, "Thanks and Regards")
     y -= line_height * 1.4
 
     # ── SELLER DETAILS (bold) ──
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(font_bold, body_font)
     if q.seller_name:
         c.drawString(x_left, y, q.seller_name)
         y -= line_height
@@ -409,9 +470,26 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         c.drawString(x_left, y, q.seller_company)
         y -= line_height
     if q.seller_phone:
-        c.setFont("Helvetica", 10)
+        c.setFont(font_regular, body_font)
         c.drawString(x_left, y, q.seller_phone)
         y -= line_height
+
+    # ── BANK DETAILS BOX ──
+    if q.bank_details:
+        y -= line_height * 0.6
+        c.setFont(font_bold, body_font)
+        c.drawString(x_left, y, "Bank Details:")
+        y -= line_height * 0.9
+        box_height = 70
+        c.rect(x_left, y - box_height + 10, width - 100, box_height, stroke=1, fill=0)
+        c.setFont(font_regular, body_font)
+        text_y = y
+        for line in q.bank_details.splitlines():
+            if line.strip():
+                wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 120)
+                for wrapped_line in wrapped_lines:
+                    c.drawString(x_left + 8, text_y, wrapped_line)
+                    text_y -= line_height * 0.9
 
     # Footer image from provided asset
     if bottom_reader and footer_height:

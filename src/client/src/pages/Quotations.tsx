@@ -26,6 +26,7 @@ type QuotationDefaults = {
   product_details: string;
   remarks: string;
   terms_and_conditions: string;
+  bank_details: string;
   seller_name: string;
   seller_designation: string;
   seller_company: string;
@@ -114,6 +115,7 @@ export default function Quotations() {
   const [subject, setSubject] = useState("");
   const [remarks, setRemarks] = useState("");
   const [terms, setTerms] = useState("");
+  const [bankDetails, setBankDetails] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerDesignation, setSellerDesignation] = useState("");
   const [sellerCompany, setSellerCompany] = useState("");
@@ -179,6 +181,7 @@ export default function Quotations() {
         product_details: buildProductDetails(productRows, defaultsQuery.data?.product_details),
         remarks,
         terms_and_conditions: terms,
+        bank_details: bankDetails,
         seller_name: sellerName,
         seller_designation: sellerDesignation,
         seller_company: sellerCompany,
@@ -231,6 +234,7 @@ export default function Quotations() {
         product_details: buildProductDetails(productRows, defaultsQuery.data?.product_details),
         remarks,
         terms_and_conditions: terms,
+        bank_details: bankDetails,
         seller_name: sellerName,
         seller_designation: sellerDesignation,
         seller_company: sellerCompany,
@@ -286,6 +290,7 @@ export default function Quotations() {
         product_details?: string | null;
         remarks?: string | null;
         terms_and_conditions?: string | null;
+        bank_details?: string | null;
         seller_name?: string | null;
         seller_designation?: string | null;
         seller_company?: string | null;
@@ -300,6 +305,7 @@ export default function Quotations() {
       setSubject(q.subject ?? "");
       setRemarks(q.remarks ?? "");
       setTerms(q.terms_and_conditions ?? "");
+      setBankDetails(q.bank_details ?? "");
       setSellerName(q.seller_name ?? "");
       setSellerDesignation(q.seller_designation ?? "");
       setSellerCompany(q.seller_company ?? "");
@@ -331,6 +337,7 @@ export default function Quotations() {
       product_details: buildProductDetails(productRows, d?.product_details),
       remarks: remarks || d?.remarks || "",
       terms_and_conditions: terms || d?.terms_and_conditions || "",
+      bank_details: bankDetails || d?.bank_details || "",
       seller_name: sellerName || d?.seller_name || "",
       seller_designation: sellerDesignation || d?.seller_designation || "",
       seller_company: sellerCompany || d?.seller_company || "",
@@ -344,6 +351,7 @@ export default function Quotations() {
     productRows,
     remarks,
     terms,
+    bankDetails,
     sellerName,
     sellerDesignation,
     sellerCompany,
@@ -368,6 +376,7 @@ export default function Quotations() {
     setSubject("");
     setRemarks("");
     setTerms("");
+    setBankDetails("");
     setSellerName("");
     setSellerDesignation("");
     setSellerCompany("");
@@ -453,6 +462,14 @@ export default function Quotations() {
                         defaultValue={defaults.terms_and_conditions}
                         rows={4}
                         onBlur={(e) => (defaults.terms_and_conditions = e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Bank details</label>
+                      <Textarea
+                        defaultValue={defaults.bank_details}
+                        rows={4}
+                        onBlur={(e) => (defaults.bank_details = e.target.value)}
                       />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -659,6 +676,15 @@ export default function Quotations() {
                   rows={4}
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Bank details</label>
+                <Textarea
+                  value={bankDetails}
+                  onChange={(e) => setBankDetails(e.target.value)}
+                  placeholder={defaults?.bank_details || ""}
+                  rows={4}
+                />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Seller name</label>
@@ -735,7 +761,7 @@ export default function Quotations() {
                   defaults applied.
                 </p>
               ) : (
-                <div className="text-sm border rounded-lg bg-white overflow-hidden">
+                <div className="text-[15px] border rounded-lg bg-white overflow-hidden">
                   <img
                     src="/quotation-top.png"
                     alt="Quotation header"
@@ -743,12 +769,13 @@ export default function Quotations() {
                   />
 
                   <div className="px-6 pt-5 pb-0 space-y-0 leading-relaxed">
-                    <div className="flex justify-between text-[13px]">
+                    <div className="flex justify-between text-[14px]">
                       <span>{`Ref: SLTMS/ ${new Date().getFullYear()}-${String(
                         (new Date().getFullYear() + 1).toString().slice(-2)
                       )}/ 001`}</span>
                       <span>{`Dated: ${new Date().toLocaleDateString("en-GB")}`}</span>
                     </div>
+                    <p className="mt-2 text-center font-bold tracking-wide text-[16px]">QUOTATION</p>
 
                     <p className="mt-5">To,</p>
                     <p className="font-bold">{effective.buyer_name}</p>
@@ -762,7 +789,7 @@ export default function Quotations() {
                     <p>As per telephonic conversation, please find below rates for items discussed –</p>
 
                     <div className="mt-4 border border-black">
-                      <table className="w-full border-collapse text-xs">
+                      <table className="w-full border-collapse text-sm">
                         <thead>
                           <tr className="bg-muted/20">
                             {previewProductRows[0].map((cell, idx) => (
@@ -797,13 +824,22 @@ export default function Quotations() {
                       {effective.terms_and_conditions}
                     </div>
 
-                    <p className="mt-4">Hoping to have positive business with you.</p>
+                    <p className="mt-4">
+                      For any clarification or order confirmation, please feel free to contact us.
+                    </p>
                     <p>Thanks and Regards</p>
 
                     <p className="mt-4 font-bold">{effective.seller_name}</p>
                     <p className="font-bold">{effective.seller_designation}</p>
                     <p className="font-bold">{effective.seller_company}</p>
                     <p>{effective.seller_phone}</p>
+
+                    {effective.bank_details && (
+                      <div className="mt-4 border border-black rounded-sm p-3">
+                        <p className="font-bold">Bank Details:</p>
+                        <div className="whitespace-pre-line">{effective.bank_details}</div>
+                      </div>
+                    )}
                   </div>
                   <img
                     src="/quotation-bottom.png"
