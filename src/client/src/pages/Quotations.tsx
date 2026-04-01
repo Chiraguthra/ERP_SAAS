@@ -18,6 +18,7 @@ import { Loader2, FileText, Settings2, Download, Edit, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DataTablePagination } from "@/components/DataTablePagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type QuotationDefaults = {
   buyer_name: string;
@@ -39,6 +40,24 @@ type SavedQuotation = {
   subject: string | null;
   created_at: string | null;
 };
+
+type SavedProforma = {
+  id: number;
+  buyer_name: string | null;
+  subject: string | null;
+  created_at: string | null;
+};
+
+type PiProductRow = {
+  srNo: string;
+  item: string;
+  qty: string;
+  uom: string;
+  unitPrice: string;
+  gstPct: string;
+};
+
+const PI_PIPE_HEADER = "Sr|Item|Qty|Uom|UnitPrice|GST%";
 
 type ProductRow = {
   srNo: string;
@@ -106,6 +125,58 @@ function buildProductDetails(rows: ProductRow[], defaultText?: string) {
   return [header, ...lines].join("\n");
 }
 
+function parsePiProductRows(text: string): Array<[string, string, string, string, string, string]> {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const rows: Array<[string, string, string, string, string, string]> = [
+    ["Sr", "Item", "Qty", "Uom", "UnitPrice", "GST%"],
+  ];
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
+    const parts = line.split("|").map((p) => p.trim());
+    if (parts.length >= 7) {
+      if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+      rows.push([parts[0], parts[1], parts[3], parts[4], parts[5], parts[6]]);
+      continue;
+    }
+    if (parts.length >= 6) {
+      if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+      rows.push([parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]]);
+      continue;
+    }
+    if (parts.length >= 4) {
+      if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+      rows.push([parts[0], parts[1], "1", parts[3], parts[2], "18"]);
+    }
+  }
+
+  if (rows.length === 1) rows.push(["1.", "", "1", "", "", "18"]);
+  return rows;
+}
+
+function buildPiProductDetails(rows: PiProductRow[], defaultText?: string) {
+  const nonEmpty = rows.filter(
+    (r) =>
+      r.item.trim() ||
+      r.qty.trim() ||
+      r.uom.trim() ||
+      r.unitPrice.trim() ||
+      r.gstPct.trim()
+  );
+  if (nonEmpty.length === 0) {
+    return defaultText ?? "";
+  }
+  const lines = nonEmpty.map((r, idx) => {
+    const sr = r.srNo.trim() || `${idx + 1}.`;
+    return [sr, r.item.trim(), r.qty.trim() || "1", r.uom.trim(), r.unitPrice.trim(), r.gstPct.trim() || "18"].join("|");
+  });
+  return [PI_PIPE_HEADER, ...lines].join("\n");
+}
+
 export default function Quotations() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -125,6 +196,27 @@ export default function Quotations() {
   ]);
 
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null);
+
+  const [piBuyerName, setPiBuyerName] = useState("");
+  const [piBuyerAddress, setPiBuyerAddress] = useState("");
+  const [piBuyerGstin, setPiBuyerGstin] = useState("");
+  const [piBuyerPhone, setPiBuyerPhone] = useState("");
+  const [piPlaceOfSupply, setPiPlaceOfSupply] = useState("");
+  const [piSubject, setPiSubject] = useState("");
+  const [piRemarks, setPiRemarks] = useState("");
+  const [piTerms, setPiTerms] = useState("");
+  const [piBankDetails, setPiBankDetails] = useState("");
+  const [piSellerName, setPiSellerName] = useState("");
+  const [piSellerDesignation, setPiSellerDesignation] = useState("");
+  const [piSellerCompany, setPiSellerCompany] = useState("");
+  const [piSellerPhone, setPiSellerPhone] = useState("");
+  const [piProductRows, setPiProductRows] = useState<PiProductRow[]>([
+    { srNo: "1.", item: "", qty: "1", uom: "", unitPrice: "", gstPct: "18" },
+  ]);
+  const [editingProformaId, setEditingProformaId] = useState<number | null>(null);
+  const [showPiPreview, setShowPiPreview] = useState(false);
+  const [piPage, setPiPage] = useState(1);
+  const [piPageSize, setPiPageSize] = useState(10);
 
   const [isDefaultsOpen, setIsDefaultsOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -279,6 +371,129 @@ export default function Quotations() {
     },
   });
 
+  const proformaInvoicesQuery = useQuery({
+    queryKey: ["/api/proforma-invoices"],
+    queryFn: async () => {
+      const r = await authFetch("/api/proforma-invoices");
+      if (!r.ok) throw new Error("Failed to load estimates");
+      const j = await r.json();
+      return (j as { proforma_invoices?: SavedProforma[] }).proforma_invoices ?? [];
+    },
+  });
+
+  const createProformaMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        buyer_name: piBuyerName,
+        buyer_address: piBuyerAddress,
+        buyer_gstin: piBuyerGstin,
+        buyer_phone: piBuyerPhone,
+        place_of_supply: piPlaceOfSupply,
+        subject: piSubject,
+        product_details: buildPiProductDetails(piProductRows, defaultsQuery.data?.product_details),
+        remarks: piRemarks,
+        terms_and_conditions: piTerms,
+        bank_details: piBankDetails,
+        seller_name: piSellerName,
+        seller_designation: piSellerDesignation,
+        seller_company: piSellerCompany,
+        seller_phone: piSellerPhone,
+      };
+      const r = await authFetch("/api/proforma-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to save estimate");
+      }
+      return (await r.json()) as { id: number };
+    },
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      try {
+        const r = await authFetch(`/api/proforma-invoices/${res.id}/pdf`);
+        if (!r.ok) throw new Error("Failed to download PDF");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Estimate-${String(res.id).padStart(3, "0")}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: "Saved", description: "Estimate saved and PDF downloaded" });
+      } catch (e) {
+        toast({
+          title: "Partial success",
+          description:
+            e instanceof Error ? e.message : "Estimate saved but download failed. Try again from the list below.",
+        });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const updateProformaMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingProformaId) throw new Error("No estimate selected for update");
+      const payload = {
+        buyer_name: piBuyerName,
+        buyer_address: piBuyerAddress,
+        buyer_gstin: piBuyerGstin,
+        buyer_phone: piBuyerPhone,
+        place_of_supply: piPlaceOfSupply,
+        subject: piSubject,
+        product_details: buildPiProductDetails(piProductRows, defaultsQuery.data?.product_details),
+        remarks: piRemarks,
+        terms_and_conditions: piTerms,
+        bank_details: piBankDetails,
+        seller_name: piSellerName,
+        seller_designation: piSellerDesignation,
+        seller_company: piSellerCompany,
+        seller_phone: piSellerPhone,
+      };
+      const r = await authFetch(`/api/proforma-invoices/${editingProformaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to update estimate");
+      }
+      return (await r.json()) as { id: number };
+    },
+    onSuccess: async (res) => {
+      setEditingProformaId(null);
+      setShowPiPreview(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      try {
+        const r = await authFetch(`/api/proforma-invoices/${res.id}/pdf`);
+        if (!r.ok) throw new Error("Failed to download PDF");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Estimate-${String(res.id).padStart(3, "0")}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: "Updated", description: "Estimate updated and PDF downloaded" });
+      } catch (e) {
+        toast({
+          title: "Partial success",
+          description:
+            e instanceof Error ? e.message : "Estimate updated but download failed. Try again from the list below.",
+        });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
   const handleEditQuotation = async (quotationId: number) => {
     try {
       const r = await authFetch(`/api/quotation-letters/${quotationId}`);
@@ -328,6 +543,65 @@ export default function Quotations() {
     }
   };
 
+  const handleEditProforma = async (proformaId: number) => {
+    try {
+      const r = await authFetch(`/api/proforma-invoices/${proformaId}`);
+      if (!r.ok) throw new Error("Failed to load estimate");
+      const p = (await r.json()) as {
+        buyer_name?: string | null;
+        buyer_address?: string | null;
+        buyer_gstin?: string | null;
+        buyer_phone?: string | null;
+        place_of_supply?: string | null;
+        subject?: string | null;
+        product_details?: string | null;
+        remarks?: string | null;
+        terms_and_conditions?: string | null;
+        bank_details?: string | null;
+        seller_name?: string | null;
+        seller_designation?: string | null;
+        seller_company?: string | null;
+        seller_phone?: string | null;
+      };
+
+      setEditingProformaId(proformaId);
+      setShowPiPreview(false);
+
+      setPiBuyerName(p.buyer_name ?? "");
+      setPiBuyerAddress(p.buyer_address ?? "");
+      setPiBuyerGstin(p.buyer_gstin ?? "");
+      setPiBuyerPhone(p.buyer_phone ?? "");
+      setPiPlaceOfSupply(p.place_of_supply ?? "");
+      setPiSubject(p.subject ?? "");
+      setPiRemarks(p.remarks ?? "");
+      setPiTerms(p.terms_and_conditions ?? "");
+      setPiBankDetails(p.bank_details ?? "");
+      setPiSellerName(p.seller_name ?? "");
+      setPiSellerDesignation(p.seller_designation ?? "");
+      setPiSellerCompany(p.seller_company ?? "");
+      setPiSellerPhone(p.seller_phone ?? "");
+
+      const parsed = parsePiProductRows(p.product_details ?? "");
+      const rows = parsed.slice(1).map(([srNo, item, qty, uom, unitPrice, gstPct]) => ({
+        srNo,
+        item,
+        qty,
+        uom,
+        unitPrice,
+        gstPct,
+      }));
+      setPiProductRows(
+        rows.length ? rows : [{ srNo: "1.", item: "", qty: "1", uom: "", unitPrice: "", gstPct: "18" }]
+      );
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Failed to edit estimate",
+        variant: "destructive",
+      });
+    }
+  };
+
   const effective = useMemo(() => {
     const d = defaultsQuery.data;
     return {
@@ -363,10 +637,92 @@ export default function Quotations() {
     [effective.product_details]
   );
 
+  const effectivePi = useMemo(() => {
+    const d = defaultsQuery.data;
+    return {
+      buyer_name: piBuyerName || d?.buyer_name || "",
+      buyer_address: piBuyerAddress || d?.buyer_address || "",
+      buyer_gstin: piBuyerGstin,
+      buyer_phone: piBuyerPhone,
+      place_of_supply: piPlaceOfSupply,
+      subject: piSubject || d?.subject || "",
+      product_details: buildPiProductDetails(piProductRows, d?.product_details),
+      remarks: piRemarks || d?.remarks || "",
+      terms_and_conditions: piTerms || d?.terms_and_conditions || "",
+      bank_details: piBankDetails || d?.bank_details || "",
+      seller_name: piSellerName || d?.seller_name || "",
+      seller_designation: piSellerDesignation || d?.seller_designation || "",
+      seller_company: piSellerCompany || d?.seller_company || "",
+      seller_phone: piSellerPhone || d?.seller_phone || "",
+    };
+  }, [
+    defaultsQuery.data,
+    piBuyerName,
+    piBuyerAddress,
+    piBuyerGstin,
+    piBuyerPhone,
+    piPlaceOfSupply,
+    piSubject,
+    piProductRows,
+    piRemarks,
+    piTerms,
+    piBankDetails,
+    piSellerName,
+    piSellerDesignation,
+    piSellerCompany,
+    piSellerPhone,
+  ]);
+
+  const previewPiRows = useMemo(
+    () => parsePiProductRows(effectivePi.product_details),
+    [effectivePi.product_details]
+  );
+
+  const piTotals = useMemo(() => {
+    const lines = effectivePi.product_details
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    let taxable = 0;
+    let gst = 0;
+    for (let idx = 0; idx < lines.length; idx++) {
+      const parts = lines[idx].split("|").map((p) => p.trim());
+      let qty = 1;
+      let unit = 0;
+      let gPct = 18;
+      if (parts.length >= 7) {
+        if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+        qty = parseFloat(parts[3]) || 1;
+        unit = parseFloat(parts[5].replace(/,/g, "")) || 0;
+        gPct = parseFloat(parts[6]) || 18;
+      } else if (parts.length >= 6) {
+        if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+        qty = parseFloat(parts[2]) || 1;
+        unit = parseFloat(parts[4].replace(/,/g, "")) || 0;
+        gPct = parseFloat(parts[5]) || 18;
+      } else if (parts.length >= 4) {
+        if (idx === 0 && parts[1].toLowerCase() === "item") continue;
+        qty = 1;
+        unit = parseFloat(parts[2].replace(/,/g, "")) || 0;
+        gPct = 18;
+      } else {
+        continue;
+      }
+      const t = qty * unit;
+      taxable += t;
+      gst += t * (gPct / 100);
+    }
+    return { taxable, gst, total: taxable + gst };
+  }, [effectivePi.product_details]);
+
   const [showPreview, setShowPreview] = useState(false);
 
   const handleViewQuotation = () => {
     setShowPreview(true);
+  };
+
+  const handleViewEstimate = () => {
+    setShowPiPreview(true);
   };
 
   const resetQuotationForm = () => {
@@ -385,6 +741,25 @@ export default function Quotations() {
     setShowPreview(false);
   };
 
+  const resetEstimateForm = () => {
+    setEditingProformaId(null);
+    setPiBuyerName("");
+    setPiBuyerAddress("");
+    setPiBuyerGstin("");
+    setPiBuyerPhone("");
+    setPiPlaceOfSupply("");
+    setPiSubject("");
+    setPiRemarks("");
+    setPiTerms("");
+    setPiBankDetails("");
+    setPiSellerName("");
+    setPiSellerDesignation("");
+    setPiSellerCompany("");
+    setPiSellerPhone("");
+    setPiProductRows([{ srNo: "1.", item: "", qty: "1", uom: "", unitPrice: "", gstPct: "18" }]);
+    setShowPiPreview(false);
+  };
+
   const defaults = defaultsQuery.data;
 
   return (
@@ -392,9 +767,9 @@ export default function Quotations() {
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-display font-bold">Quotations</h2>
+            <h2 className="text-3xl font-display font-bold">Quotations and estimates</h2>
             <p className="text-muted-foreground">
-              Create classic SILVERLINE quotations in the standard format.
+              Create quotation letters and GST-style estimates; shared defaults apply to both.
             </p>
           </div>
           <Dialog open={isDefaultsOpen} onOpenChange={setIsDefaultsOpen}>
@@ -524,6 +899,13 @@ export default function Quotations() {
           </Dialog>
         </div>
 
+        <Tabs defaultValue="quotation" className="w-full space-y-6">
+          <TabsList className="flex flex-wrap h-auto gap-1">
+            <TabsTrigger value="quotation">Quotations</TabsTrigger>
+            <TabsTrigger value="estimate">Estimate</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="quotation" className="space-y-6 mt-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <Card>
             <CardHeader>
@@ -967,6 +1349,510 @@ export default function Quotations() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="estimate" className="space-y-6 mt-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" /> Create estimate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Buyer name</label>
+                      <Input
+                        value={piBuyerName}
+                        onChange={(e) => setPiBuyerName(e.target.value)}
+                        placeholder={defaults?.buyer_name || "Buyer name"}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Subject (optional)</label>
+                      <Input
+                        value={piSubject}
+                        onChange={(e) => setPiSubject(e.target.value)}
+                        placeholder={defaults?.subject || "Subject"}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Buyer address</label>
+                    <Textarea
+                      value={piBuyerAddress}
+                      onChange={(e) => setPiBuyerAddress(e.target.value)}
+                      placeholder={defaults?.buyer_address || "Buyer address"}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Buyer GSTIN</label>
+                      <Input
+                        value={piBuyerGstin}
+                        onChange={(e) => setPiBuyerGstin(e.target.value)}
+                        placeholder="e.g. 20AAGCM7457A1ZV"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Buyer contact</label>
+                      <Input
+                        value={piBuyerPhone}
+                        onChange={(e) => setPiBuyerPhone(e.target.value)}
+                        placeholder="Phone"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium">Place of supply</label>
+                      <Input
+                        value={piPlaceOfSupply}
+                        onChange={(e) => setPiPlaceOfSupply(e.target.value)}
+                        placeholder="e.g. 20-Jharkhand"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Line items (quantity, unit price, GST %)</label>
+                    <div className="border rounded-md overflow-x-auto">
+                      <table className="w-full text-xs min-w-[560px]">
+                        <thead>
+                          <tr className="bg-muted/40">
+                            <th className="text-left px-1 py-1 w-12">Sr</th>
+                            <th className="text-left px-1 py-1">Item</th>
+                            <th className="text-left px-1 py-1 w-14">Quantity</th>
+                            <th className="text-left px-1 py-1 w-16">Uom</th>
+                            <th className="text-left px-1 py-1 w-20">Price</th>
+                            <th className="text-left px-1 py-1 w-14">GST%</th>
+                            <th className="w-8" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {piProductRows.map((row, idx) => (
+                            <tr key={idx} className="border-t">
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.srNo}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], srNo: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.item}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], item: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.qty}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], qty: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.uom}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], uom: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.unitPrice}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], unitPrice: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-1 py-1 align-top">
+                                <Input
+                                  value={row.gstPct}
+                                  onChange={(e) => {
+                                    const next = [...piProductRows];
+                                    next[idx] = { ...next[idx], gstPct: e.target.value };
+                                    setPiProductRows(next);
+                                  }}
+                                  className="h-7 text-xs"
+                                />
+                              </td>
+                              <td className="px-0 py-1 align-top">
+                                {piProductRows.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={() =>
+                                      setPiProductRows(piProductRows.filter((_, i) => i !== idx))
+                                    }
+                                  >
+                                    ×
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1">
+                      <span>Leave rows blank to use default product lines from quotation defaults.</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={() =>
+                          setPiProductRows((rows) => [
+                            ...rows,
+                            {
+                              srNo: `${rows.length + 1}.`,
+                              item: "",
+                              qty: "1",
+                              uom: "",
+                              unitPrice: "",
+                              gstPct: "18",
+                            },
+                          ])
+                        }
+                      >
+                        Add row
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Remarks</label>
+                    <Textarea
+                      value={piRemarks}
+                      onChange={(e) => setPiRemarks(e.target.value)}
+                      placeholder={defaults?.remarks || ""}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Terms and Conditions</label>
+                    <Textarea
+                      value={piTerms}
+                      onChange={(e) => setPiTerms(e.target.value)}
+                      placeholder={defaults?.terms_and_conditions || ""}
+                      rows={4}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Bank details</label>
+                    <Textarea
+                      value={piBankDetails}
+                      onChange={(e) => setPiBankDetails(e.target.value)}
+                      placeholder={defaults?.bank_details || ""}
+                      rows={4}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Seller name</label>
+                      <Input
+                        value={piSellerName}
+                        onChange={(e) => setPiSellerName(e.target.value)}
+                        placeholder={defaults?.seller_name || ""}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Seller designation</label>
+                      <Input
+                        value={piSellerDesignation}
+                        onChange={(e) => setPiSellerDesignation(e.target.value)}
+                        placeholder={defaults?.seller_designation || ""}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Seller company</label>
+                      <Input
+                        value={piSellerCompany}
+                        onChange={(e) => setPiSellerCompany(e.target.value)}
+                        placeholder={defaults?.seller_company || ""}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Seller phone</label>
+                      <Input
+                        value={piSellerPhone}
+                        onChange={(e) => setPiSellerPhone(e.target.value)}
+                        placeholder={defaults?.seller_phone || ""}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <Button type="button" variant="outline" onClick={handleViewEstimate}>
+                      View estimate
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (editingProformaId) {
+                          updateProformaMutation.mutate();
+                        } else {
+                          createProformaMutation.mutate();
+                        }
+                      }}
+                      disabled={createProformaMutation.isPending || updateProformaMutation.isPending}
+                    >
+                      {(editingProformaId ? updateProformaMutation.isPending : createProformaMutation.isPending) && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      {editingProformaId ? "Update & Download PDF" : "Save & Download PDF"}
+                    </Button>
+                    {editingProformaId && (
+                      <Button type="button" variant="outline" onClick={resetEstimateForm}>
+                        <X className="w-4 h-4 mr-2" />
+                        Cancel edit
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-dashed border-primary/40">
+                <CardHeader>
+                  <CardTitle>Estimate preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!showPiPreview ? (
+                    <p className="text-sm text-muted-foreground">
+                      Click <span className="font-semibold">View estimate</span> to preview with quotation defaults
+                      applied.
+                    </p>
+                  ) : (
+                    <div className="text-[13px] border rounded-lg bg-white overflow-hidden overflow-x-auto">
+                      <img src="/quotation-top.png" alt="" className="w-full h-auto min-w-[520px]" />
+                      <div className="px-4 pt-4 pb-2 space-y-2 leading-snug min-w-[520px]">
+                        <p className="text-center font-bold text-[15px]">Estimate</p>
+                        <div className="grid grid-cols-2 gap-4 text-[12px]">
+                          <div>
+                            <p className="font-bold">Estimate For:</p>
+                            <p className="font-bold">{effectivePi.buyer_name}</p>
+                            <div className="whitespace-pre-line">{effectivePi.buyer_address}</div>
+                            {effectivePi.buyer_phone ? <p>Contact No: {effectivePi.buyer_phone}</p> : null}
+                            {effectivePi.buyer_gstin ? <p>GSTIN: {effectivePi.buyer_gstin}</p> : null}
+                          </div>
+                          <div>
+                            <p className="font-bold">Estimate Details:</p>
+                            <p>No: (on save)</p>
+                            <p>Date: {new Date().toLocaleDateString("en-GB")}</p>
+                            {effectivePi.place_of_supply ? (
+                              <p>Place Of Supply: {effectivePi.place_of_supply}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="border border-black text-[11px] mt-2">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-muted/30">
+                                <th className="border border-black px-1 py-0.5 text-left">#</th>
+                                <th className="border border-black px-1 py-0.5 text-left">Item</th>
+                                <th className="border border-black px-1 py-0.5 text-left">Quantity</th>
+                                <th className="border border-black px-1 py-0.5 text-left">Uom</th>
+                                <th className="border border-black px-1 py-0.5 text-left">Unit Price (₹)</th>
+                                <th className="border border-black px-1 py-0.5 text-left">GST</th>
+                                <th className="border border-black px-1 py-0.5 text-left">Amt</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewPiRows.slice(1).map((row, idx) => {
+                                const qty = parseFloat(row[2]) || 1;
+                                const unit = parseFloat(row[4].replace(/,/g, "")) || 0;
+                                const gPct = parseFloat(row[5]) || 18;
+                                const taxable = qty * unit;
+                                const gst = taxable * (gPct / 100);
+                                const tot = taxable + gst;
+                                return (
+                                  <tr key={idx}>
+                                    <td className="border border-black px-1 py-0.5">{idx + 1}</td>
+                                    <td className="border border-black px-1 py-0.5">{row[1]}</td>
+                                    <td className="border border-black px-1 py-0.5">{row[2]}</td>
+                                    <td className="border border-black px-1 py-0.5">{row[3]}</td>
+                                    <td className="border border-black px-1 py-0.5">
+                                      ₹{unit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="border border-black px-1 py-0.5">
+                                      ({gPct}%) ₹{gst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="border border-black px-1 py-0.5">
+                                      ₹{tot.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="font-semibold text-[12px]">
+                          Sub Total : ₹{piTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </p>
+                        <p className="font-semibold text-[12px]">
+                          Total : ₹{piTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </p>
+                        {effectivePi.remarks ? (
+                          <div className="text-[11px] whitespace-pre-line">{effectivePi.remarks}</div>
+                        ) : null}
+                        <p className="font-bold text-[12px]">Terms & Conditions:</p>
+                        <div className="text-[11px] whitespace-pre-line">
+                          {effectivePi.terms_and_conditions}
+                        </div>
+                        {effectivePi.bank_details ? (
+                          <div className="border border-black rounded-sm p-2 text-[11px] whitespace-pre-line">
+                            <span className="font-bold">Bank Details:</span>
+                            <br />
+                            {effectivePi.bank_details}
+                          </div>
+                        ) : null}
+                        <p className="text-[11px] pt-2">
+                          For <span className="font-semibold">{effectivePi.seller_company}</span>: Authorized
+                          Signatory
+                        </p>
+                      </div>
+                      <img src="/quotation-bottom.png" alt="" className="w-full h-auto min-w-[520px] mt-2" />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" /> Saved estimates
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {proformaInvoicesQuery.isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-md border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead>ID</TableHead>
+                            <TableHead>Buyer</TableHead>
+                            <TableHead>Subject</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(() => {
+                            const rows = proformaInvoicesQuery.data ?? [];
+                            const total = rows.length;
+                            const safePageSize = Math.max(1, piPageSize);
+                            const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+                            const safePage = Math.min(Math.max(1, piPage), totalPages);
+                            const offset = (safePage - 1) * safePageSize;
+                            const paged = rows.slice(offset, offset + safePageSize);
+                            if (paged.length === 0) {
+                              return (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={5}
+                                    className="text-center py-8 text-muted-foreground"
+                                  >
+                                    No estimates saved yet.
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+                            return paged.map((q) => (
+                              <TableRow key={q.id}>
+                                <TableCell className="font-mono text-xs text-muted-foreground">{q.id}</TableCell>
+                                <TableCell>{q.buyer_name ?? "—"}</TableCell>
+                                <TableCell>{q.subject ?? "—"}</TableCell>
+                                <TableCell>
+                                  {q.created_at
+                                    ? new Date(q.created_at).toLocaleDateString("en-GB")
+                                    : "—"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleEditProforma(q.id)}
+                                      aria-label="Edit estimate"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={async () => {
+                                        try {
+                                          const r = await authFetch(`/api/proforma-invoices/${q.id}/pdf`);
+                                          if (!r.ok) throw new Error("Failed to download PDF");
+                                          const blob = await r.blob();
+                                          const url = URL.createObjectURL(blob);
+                                          const a = document.createElement("a");
+                                          a.href = url;
+                                          a.download = `Estimate-${String(q.id).padStart(3, "0")}.pdf`;
+                                          a.click();
+                                          URL.revokeObjectURL(url);
+                                        } catch (e) {
+                                          toast({
+                                            title: "Error",
+                                            description:
+                                              e instanceof Error
+                                                ? e.message
+                                                : "Download failed. Please try again.",
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
+                                      aria-label="Download estimate PDF"
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ));
+                          })()}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <DataTablePagination
+                      totalCount={(proformaInvoicesQuery.data ?? []).length}
+                      page={piPage}
+                      pageSize={piPageSize}
+                      onPageChange={setPiPage}
+                      onPageSizeChange={setPiPageSize}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

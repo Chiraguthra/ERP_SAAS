@@ -73,6 +73,7 @@ export default function SalesLeads() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterCity, setFilterCity] = useState<string>("");
   const [filterCompany, setFilterCompany] = useState<string>("");
+  const [filterCustomer, setFilterCustomer] = useState<string>("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [isRemarksOpen, setIsRemarksOpen] = useState(false);
@@ -108,13 +109,14 @@ export default function SalesLeads() {
   const offset = (safePage - 1) * safePageSize;
 
   const leadsQuery = useQuery({
-    queryKey: ["/api/sales-leads", filterCity, filterCompany, safePage, safePageSize],
+    queryKey: ["/api/sales-leads", filterCity, filterCompany, filterCustomer, safePage, safePageSize],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterCity) params.set("city", filterCity);
       if (filterCompany) params.set("company", filterCompany);
-       params.set("limit", String(safePageSize));
-       params.set("offset", String(offset));
+      if (filterCustomer) params.set("customer", filterCustomer);
+      params.set("limit", String(safePageSize));
+      params.set("offset", String(offset));
       const r = await authFetch(`/api/sales-leads?${params}`);
       if (!r.ok) throw new Error("Failed to load leads");
       const j = await r.json();
@@ -303,6 +305,7 @@ export default function SalesLeads() {
       const params = new URLSearchParams();
       if (filterCity) params.set("city", filterCity);
       if (filterCompany) params.set("company", filterCompany);
+      if (filterCustomer) params.set("customer", filterCustomer);
       params.set("limit", "10000");
       const r = await authFetch(`/api/sales-leads?${params}`);
       if (!r.ok) throw new Error("Failed to fetch");
@@ -344,7 +347,7 @@ export default function SalesLeads() {
 
   useEffect(() => {
     setPage(1);
-  }, [filterCity, filterCompany]);
+  }, [filterCity, filterCompany, filterCustomer]);
 
   return (
     <Layout>
@@ -556,6 +559,15 @@ export default function SalesLeads() {
                   placeholder="Search by company"
                   value={filterCompany}
                   onChange={(e) => setFilterCompany(e.target.value)}
+                  className="w-[180px]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap sr-only">Search by customer</Label>
+                <Input
+                  placeholder="Search by customer"
+                  value={filterCustomer}
+                  onChange={(e) => setFilterCustomer(e.target.value)}
                   className="w-[180px]"
                 />
               </div>

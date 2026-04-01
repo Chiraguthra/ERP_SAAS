@@ -162,6 +162,27 @@ class QuotationLetter(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ProformaInvoice(Base):
+    """Saved estimate documents (GST-style PDF); defaults align with quotation letters (same defaults API)."""
+    __tablename__ = "proforma_invoices"
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_name = Column(String, nullable=True)
+    buyer_address = Column(String, nullable=True)
+    buyer_gstin = Column(String, nullable=True)
+    buyer_phone = Column(String, nullable=True)
+    place_of_supply = Column(String, nullable=True)
+    subject = Column(String, nullable=True)
+    product_details = Column(String, nullable=True)
+    remarks = Column(String, nullable=True)
+    terms_and_conditions = Column(String, nullable=True)
+    bank_details = Column(String, nullable=True)
+    seller_name = Column(String, nullable=True)
+    seller_designation = Column(String, nullable=True)
+    seller_company = Column(String, nullable=True)
+    seller_phone = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class ProductPriceListItem(Base):
     """Price list for CRM rate enquiry – first and final price per product."""
     __tablename__ = "product_price_list"

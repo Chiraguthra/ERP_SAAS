@@ -10,7 +10,7 @@ from .models import erp_models  # noqa: F401 - register ERP tables with Base.met
 from .routers import auth, products, customers, orders, analytics, retailer, whatsapp
 from .routers import organizations, branches, users_manage, roles, audit
 from .routers import finance, procurement, sales_erp, inventory_erp, reports, saas, logistics, leads, sales_leads
-from .routers import quotation_letters, product_price_list
+from .routers import quotation_letters, proforma_invoices, product_price_list
 
 
 def ensure_tables():
@@ -332,6 +332,7 @@ app.include_router(logistics.router, tags=["Logistics"])
 app.include_router(leads.router, tags=["Leads"])
 app.include_router(sales_leads.router, tags=["Customer/Sales Lead"])
 app.include_router(quotation_letters.router, tags=["Quotation Letters"])
+app.include_router(proforma_invoices.router, tags=["Estimates"])
 app.include_router(product_price_list.router, tags=["Product Price List"])
 
 @app.get("/api/health")
