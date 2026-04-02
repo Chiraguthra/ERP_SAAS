@@ -1,4 +1,4 @@
-"""Estimate documents (GST-style PDF per quotation-letter defaults). API path unchanged for compatibility."""
+"""Estimate documents (GST-style PDF); defaults from estimate_defaults."""
 import base64
 import os
 import re
@@ -19,9 +19,73 @@ from sqlalchemy.orm import Session
 from ..db.database import get_db
 from ..models import models
 from .auth import get_current_user
-from .quotation_letters import _get_or_create_defaults
 
 router = APIRouter()
+
+
+def _get_or_create_estimate_defaults(db: Session) -> models.EstimateDefaults:
+    row = db.query(models.EstimateDefaults).first()
+    if row:
+        return row
+    q = db.query(models.QuotationLetterDefaults).first()
+    row = models.EstimateDefaults(
+        buyer_name=(q.buyer_name if q else None) or "XYZ COMPANY",
+        buyer_address=(q.buyer_address if q else None) or "A-29, New friends Colony,\nBhopal",
+        buyer_gstin="",
+        buyer_phone="",
+        place_of_supply="",
+        subject=(q.subject if q else None) or "Estimate for your site as discussed - reg.",
+        product_details=(
+            "Sr|Item|Qty|Uom|UnitPrice|GST%\n"
+            "1.|Sample line|1|PCS|0|18"
+        ),
+        remarks=(q.remarks if q else None) or "",
+        terms_and_conditions=(
+            (q.terms_and_conditions if q else None)
+            or (
+                "1. GST Extra\n"
+                "2. Freight: Extra/ F.O.R (option to be given)\n"
+                "3. Payment Terms: as mutually discussed\n"
+                "4. Delivery Time: 00 working Days ( to be filled)"
+            )
+        ),
+        bank_details=(
+            (q.bank_details if q else None)
+            or (
+                "Beneficiary Name: SILVERLINE TECHNO MANAGEMENT SERVICES\n"
+                "Account Number: \n"
+                "IFSC Code: \n"
+                "Branch: "
+            )
+        ),
+        seller_name=(q.seller_name if q else None) or "Nimish Gera",
+        seller_designation=(q.seller_designation if q else None) or "Partner",
+        seller_company=(q.seller_company if q else None) or "SilverLine Techno Management Services",
+        seller_phone=(q.seller_phone if q else None) or "9962587081 / 7562042250",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _estimate_defaults_to_dict(d: models.EstimateDefaults) -> dict[str, str]:
+    return {
+        "buyer_name": d.buyer_name or "",
+        "buyer_address": d.buyer_address or "",
+        "buyer_gstin": d.buyer_gstin or "",
+        "buyer_phone": d.buyer_phone or "",
+        "place_of_supply": d.place_of_supply or "",
+        "subject": d.subject or "",
+        "product_details": d.product_details or "",
+        "remarks": d.remarks or "",
+        "terms_and_conditions": d.terms_and_conditions or "",
+        "bank_details": d.bank_details or "",
+        "seller_name": d.seller_name or "",
+        "seller_designation": d.seller_designation or "",
+        "seller_company": d.seller_company or "",
+        "seller_phone": d.seller_phone or "",
+    }
 
 
 def _money_str(d: Decimal) -> str:
@@ -248,22 +312,19 @@ def _estimate_aggregate(p: models.ProformaInvoice) -> dict[str, Any]:
     total_cgst = Decimal("0")
     total_sgst = Decimal("0")
     tax_body: list[list[Any]] = []
-    for gst_rate, agg in sorted(rate_agg.items(), key=lambda x: x[0]):
+    for _rate_key, agg in sorted(rate_agg.items(), key=lambda x: x[0]):
         g = agg["gst"]
         t = agg["taxable"]
         if t > 0 and g > 0:
             eff_pct = (g * 100 / t).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             half_rate = (eff_pct / 2).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            pct_label = f"{eff_pct:.0f}"
         else:
             half_rate = Decimal("0")
-            pct_label = f"{gst_rate:.0f}"
         half_amt = (g / Decimal("2")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total_cgst += half_amt
         total_sgst += half_amt
         tax_body.append(
             [
-                pct_label,
                 f"{t:,.2f}",
                 f"{half_rate:.0f}",
                 f"{half_amt:,.2f}",
@@ -286,7 +347,7 @@ def _estimate_aggregate(p: models.ProformaInvoice) -> dict[str, Any]:
 
 
 def _merged_bank_text(p: models.ProformaInvoice, db: Session) -> str:
-    d = _get_or_create_defaults(db)
+    d = _get_or_create_estimate_defaults(db)
     return ((p.bank_details or "").strip() or (d.bank_details or "")).strip()
 
 
@@ -451,13 +512,12 @@ def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str,
     for r in agg["tax_body"]:
         tax_rows.append(
             {
-                "gst_pct_label": r[0],
-                "taxable": r[1],
-                "cgst_rate": r[2],
-                "cgst_amt": r[3],
-                "sgst_rate": r[4],
-                "sgst_amt": r[5],
-                "total_tax": r[6],
+                "taxable": r[0],
+                "cgst_rate": r[1],
+                "cgst_amt": r[2],
+                "sgst_rate": r[3],
+                "sgst_amt": r[4],
+                "total_tax": r[5],
             }
         )
     tt = agg["total_taxable"]
@@ -529,11 +589,50 @@ def _render_pi_pdf(p: models.ProformaInvoice, db: Session) -> bytes:
     return _html_to_pdf(_render_estimate_html(p, db))
 
 
-def _pick(body: dict, defaults: models.QuotationLetterDefaults, field: str) -> str:
+def _pick_estimate(body: dict, defaults: models.EstimateDefaults, field: str) -> str:
     val = (body.get(field) or "").strip()
     if val:
         return val
-    return getattr(defaults, field) or ""
+    return (getattr(defaults, field) or "") or ""
+
+
+@router.get("/api/estimate-defaults")
+def get_estimate_defaults(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    d = _get_or_create_estimate_defaults(db)
+    return _estimate_defaults_to_dict(d)
+
+
+@router.put("/api/estimate-defaults")
+def update_estimate_defaults(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    d = _get_or_create_estimate_defaults(db)
+    for field in [
+        "buyer_name",
+        "buyer_address",
+        "buyer_gstin",
+        "buyer_phone",
+        "place_of_supply",
+        "subject",
+        "product_details",
+        "remarks",
+        "terms_and_conditions",
+        "bank_details",
+        "seller_name",
+        "seller_designation",
+        "seller_company",
+        "seller_phone",
+    ]:
+        if field in body:
+            setattr(d, field, (body.get(field) or "").strip() or None)
+    db.commit()
+    db.refresh(d)
+    return _estimate_defaults_to_dict(d)
 
 
 @router.get("/api/proforma-invoices")
@@ -565,23 +664,23 @@ def create_proforma_invoice(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    d = _get_or_create_defaults(db)
+    d = _get_or_create_estimate_defaults(db)
     pd = (body.get("product_details") or "").strip() or (d.product_details or "")
     pi = models.ProformaInvoice(
-        buyer_name=_pick(body, d, "buyer_name"),
-        buyer_address=_pick(body, d, "buyer_address"),
-        buyer_gstin=(body.get("buyer_gstin") or "").strip(),
-        buyer_phone=(body.get("buyer_phone") or "").strip(),
-        place_of_supply=(body.get("place_of_supply") or "").strip(),
-        subject=_pick(body, d, "subject"),
+        buyer_name=_pick_estimate(body, d, "buyer_name"),
+        buyer_address=_pick_estimate(body, d, "buyer_address"),
+        buyer_gstin=_pick_estimate(body, d, "buyer_gstin"),
+        buyer_phone=_pick_estimate(body, d, "buyer_phone"),
+        place_of_supply=_pick_estimate(body, d, "place_of_supply"),
+        subject=_pick_estimate(body, d, "subject"),
         product_details=pd,
-        remarks=_pick(body, d, "remarks"),
-        terms_and_conditions=_pick(body, d, "terms_and_conditions"),
-        bank_details=_pick(body, d, "bank_details"),
-        seller_name=_pick(body, d, "seller_name"),
-        seller_designation=_pick(body, d, "seller_designation"),
-        seller_company=_pick(body, d, "seller_company"),
-        seller_phone=_pick(body, d, "seller_phone"),
+        remarks=_pick_estimate(body, d, "remarks"),
+        terms_and_conditions=_pick_estimate(body, d, "terms_and_conditions"),
+        bank_details=_pick_estimate(body, d, "bank_details"),
+        seller_name=_pick_estimate(body, d, "seller_name"),
+        seller_designation=_pick_estimate(body, d, "seller_designation"),
+        seller_company=_pick_estimate(body, d, "seller_company"),
+        seller_phone=_pick_estimate(body, d, "seller_phone"),
     )
     db.add(pi)
     db.commit()

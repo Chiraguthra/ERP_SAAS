@@ -34,6 +34,23 @@ type QuotationDefaults = {
   seller_phone: string;
 };
 
+type EstimateDefaults = {
+  buyer_name: string;
+  buyer_address: string;
+  buyer_gstin: string;
+  buyer_phone: string;
+  place_of_supply: string;
+  subject: string;
+  product_details: string;
+  remarks: string;
+  terms_and_conditions: string;
+  bank_details: string;
+  seller_name: string;
+  seller_designation: string;
+  seller_company: string;
+  seller_phone: string;
+};
+
 type SavedQuotation = {
   id: number;
   buyer_name: string | null;
@@ -232,6 +249,15 @@ export default function Quotations() {
     },
   });
 
+  const estimateDefaultsQuery = useQuery({
+    queryKey: ["/api/estimate-defaults"],
+    queryFn: async () => {
+      const r = await authFetch("/api/estimate-defaults");
+      if (!r.ok) throw new Error("Failed to load estimate defaults");
+      return (await r.json()) as EstimateDefaults;
+    },
+  });
+
   const quotationsQuery = useQuery({
     queryKey: ["/api/quotation-letters"],
     queryFn: async () => {
@@ -258,6 +284,28 @@ export default function Quotations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotation-letter-defaults"] });
       toast({ title: "Saved", description: "Default quotation values updated" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const updateEstimateDefaultsMutation = useMutation({
+    mutationFn: async (data: Partial<EstimateDefaults>) => {
+      const r = await authFetch("/api/estimate-defaults", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to update estimate defaults");
+      }
+      return (await r.json()) as EstimateDefaults;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/estimate-defaults"] });
+      toast({ title: "Saved", description: "Estimate defaults updated" });
     },
     onError: (e: Error) => {
       toast({ title: "Error", description: e.message, variant: "destructive" });
@@ -390,7 +438,7 @@ export default function Quotations() {
         buyer_phone: piBuyerPhone,
         place_of_supply: piPlaceOfSupply,
         subject: piSubject,
-        product_details: buildPiProductDetails(piProductRows, defaultsQuery.data?.product_details),
+        product_details: buildPiProductDetails(piProductRows, estimateDefaultsQuery.data?.product_details),
         remarks: piRemarks,
         terms_and_conditions: piTerms,
         bank_details: piBankDetails,
@@ -446,7 +494,7 @@ export default function Quotations() {
         buyer_phone: piBuyerPhone,
         place_of_supply: piPlaceOfSupply,
         subject: piSubject,
-        product_details: buildPiProductDetails(piProductRows, defaultsQuery.data?.product_details),
+        product_details: buildPiProductDetails(piProductRows, estimateDefaultsQuery.data?.product_details),
         remarks: piRemarks,
         terms_and_conditions: piTerms,
         bank_details: piBankDetails,
@@ -638,13 +686,13 @@ export default function Quotations() {
   );
 
   const effectivePi = useMemo(() => {
-    const d = defaultsQuery.data;
+    const d = estimateDefaultsQuery.data;
     return {
       buyer_name: piBuyerName || d?.buyer_name || "",
       buyer_address: piBuyerAddress || d?.buyer_address || "",
-      buyer_gstin: piBuyerGstin,
-      buyer_phone: piBuyerPhone,
-      place_of_supply: piPlaceOfSupply,
+      buyer_gstin: piBuyerGstin || d?.buyer_gstin || "",
+      buyer_phone: piBuyerPhone || d?.buyer_phone || "",
+      place_of_supply: piPlaceOfSupply || d?.place_of_supply || "",
       subject: piSubject || d?.subject || "",
       product_details: buildPiProductDetails(piProductRows, d?.product_details),
       remarks: piRemarks || d?.remarks || "",
@@ -656,7 +704,7 @@ export default function Quotations() {
       seller_phone: piSellerPhone || d?.seller_phone || "",
     };
   }, [
-    defaultsQuery.data,
+    estimateDefaultsQuery.data,
     piBuyerName,
     piBuyerAddress,
     piBuyerGstin,
@@ -761,6 +809,7 @@ export default function Quotations() {
   };
 
   const defaults = defaultsQuery.data;
+  const estimateDefaults = estimateDefaultsQuery.data;
 
   return (
     <Layout>
@@ -769,7 +818,7 @@ export default function Quotations() {
           <div>
             <h2 className="text-3xl font-display font-bold">Quotations and estimates</h2>
             <p className="text-muted-foreground">
-              Create quotation letters and GST-style estimates; shared defaults apply to both.
+              Create quotation letters and GST-style estimates. Defaults are configured separately for each.
             </p>
           </div>
           <Dialog open={isDefaultsOpen} onOpenChange={setIsDefaultsOpen}>
@@ -781,120 +830,253 @@ export default function Quotations() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Quotation defaults</DialogTitle>
+                <DialogTitle>Document defaults</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 py-2">
-                {!defaults && (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  </div>
-                )}
-                {defaults && (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Buyer name</label>
-                        <Input
-                          defaultValue={defaults.buyer_name}
-                          onBlur={(e) => (defaults.buyer_name = e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2 md:col-span-1">
-                        <label className="text-sm font-medium">Subject</label>
-                        <Input
-                          defaultValue={defaults.subject}
-                          onBlur={(e) => (defaults.subject = e.target.value)}
-                        />
-                      </div>
+              <Tabs defaultValue="defaults-quotation" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="defaults-quotation">Quotation</TabsTrigger>
+                  <TabsTrigger value="defaults-estimate">Estimate</TabsTrigger>
+                </TabsList>
+                <TabsContent value="defaults-quotation" className="space-y-4 py-2 mt-4">
+                  {!defaults && (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Buyer address</label>
-                      <Textarea
-                        defaultValue={defaults.buyer_address}
-                        rows={3}
-                        onBlur={(e) => (defaults.buyer_address = e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Product details</label>
-                      <Textarea
-                        defaultValue={defaults.product_details}
-                        rows={4}
-                        onBlur={(e) => (defaults.product_details = e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Remarks</label>
-                      <Textarea
-                        defaultValue={defaults.remarks}
-                        rows={3}
-                        onBlur={(e) => (defaults.remarks = e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Terms and Conditions</label>
-                      <Textarea
-                        defaultValue={defaults.terms_and_conditions}
-                        rows={4}
-                        onBlur={(e) => (defaults.terms_and_conditions = e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Bank details</label>
-                      <Textarea
-                        defaultValue={defaults.bank_details}
-                        rows={4}
-                        onBlur={(e) => (defaults.bank_details = e.target.value)}
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Seller name</label>
-                        <Input
-                          defaultValue={defaults.seller_name}
-                          onBlur={(e) => (defaults.seller_name = e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Seller designation</label>
-                        <Input
-                          defaultValue={defaults.seller_designation}
-                          onBlur={(e) => (defaults.seller_designation = e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Seller company</label>
-                        <Input
-                          defaultValue={defaults.seller_company}
-                          onBlur={(e) => (defaults.seller_company = e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Seller phone</label>
-                        <Input
-                          defaultValue={defaults.seller_phone}
-                          onBlur={(e) => (defaults.seller_phone = e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  disabled={!defaults || updateDefaultsMutation.isPending}
-                  onClick={() => {
-                    if (!defaults) return;
-                    updateDefaultsMutation.mutate(defaults);
-                  }}
-                >
-                  {updateDefaultsMutation.isPending && (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  Save defaults
-                </Button>
-              </DialogFooter>
+                  {defaults && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Buyer name</label>
+                          <Input
+                            defaultValue={defaults.buyer_name}
+                            onBlur={(e) => (defaults.buyer_name = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2 md:col-span-1">
+                          <label className="text-sm font-medium">Subject</label>
+                          <Input
+                            defaultValue={defaults.subject}
+                            onBlur={(e) => (defaults.subject = e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Buyer address</label>
+                        <Textarea
+                          defaultValue={defaults.buyer_address}
+                          rows={3}
+                          onBlur={(e) => (defaults.buyer_address = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Product details</label>
+                        <Textarea
+                          defaultValue={defaults.product_details}
+                          rows={4}
+                          onBlur={(e) => (defaults.product_details = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Remarks</label>
+                        <Textarea
+                          defaultValue={defaults.remarks}
+                          rows={3}
+                          onBlur={(e) => (defaults.remarks = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Terms and Conditions</label>
+                        <Textarea
+                          defaultValue={defaults.terms_and_conditions}
+                          rows={4}
+                          onBlur={(e) => (defaults.terms_and_conditions = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Bank details</label>
+                        <Textarea
+                          defaultValue={defaults.bank_details}
+                          rows={4}
+                          onBlur={(e) => (defaults.bank_details = e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller name</label>
+                          <Input
+                            defaultValue={defaults.seller_name}
+                            onBlur={(e) => (defaults.seller_name = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller designation</label>
+                          <Input
+                            defaultValue={defaults.seller_designation}
+                            onBlur={(e) => (defaults.seller_designation = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller company</label>
+                          <Input
+                            defaultValue={defaults.seller_company}
+                            onBlur={(e) => (defaults.seller_company = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller phone</label>
+                          <Input
+                            defaultValue={defaults.seller_phone}
+                            onBlur={(e) => (defaults.seller_phone = e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter className="sm:justify-end px-0">
+                        <Button
+                          type="button"
+                          disabled={updateDefaultsMutation.isPending}
+                          onClick={() => updateDefaultsMutation.mutate(defaults)}
+                        >
+                          {updateDefaultsMutation.isPending && (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          Save quotation defaults
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  )}
+                </TabsContent>
+                <TabsContent value="defaults-estimate" className="space-y-4 py-2 mt-4">
+                  {!estimateDefaults && (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    </div>
+                  )}
+                  {estimateDefaults && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Buyer name</label>
+                          <Input
+                            defaultValue={estimateDefaults.buyer_name}
+                            onBlur={(e) => (estimateDefaults.buyer_name = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Subject</label>
+                          <Input
+                            defaultValue={estimateDefaults.subject}
+                            onBlur={(e) => (estimateDefaults.subject = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Buyer GSTIN</label>
+                          <Input
+                            defaultValue={estimateDefaults.buyer_gstin}
+                            onBlur={(e) => (estimateDefaults.buyer_gstin = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Buyer phone</label>
+                          <Input
+                            defaultValue={estimateDefaults.buyer_phone}
+                            onBlur={(e) => (estimateDefaults.buyer_phone = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-sm font-medium">Place of supply</label>
+                          <Input
+                            defaultValue={estimateDefaults.place_of_supply}
+                            onBlur={(e) => (estimateDefaults.place_of_supply = e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Buyer address</label>
+                        <Textarea
+                          defaultValue={estimateDefaults.buyer_address}
+                          rows={3}
+                          onBlur={(e) => (estimateDefaults.buyer_address = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Line items (pipe: Sr|Item|Qty|Uom|UnitPrice|GST%)</label>
+                        <Textarea
+                          defaultValue={estimateDefaults.product_details}
+                          rows={4}
+                          onBlur={(e) => (estimateDefaults.product_details = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Remarks</label>
+                        <Textarea
+                          defaultValue={estimateDefaults.remarks}
+                          rows={3}
+                          onBlur={(e) => (estimateDefaults.remarks = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Terms and Conditions</label>
+                        <Textarea
+                          defaultValue={estimateDefaults.terms_and_conditions}
+                          rows={4}
+                          onBlur={(e) => (estimateDefaults.terms_and_conditions = e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Bank details</label>
+                        <Textarea
+                          defaultValue={estimateDefaults.bank_details}
+                          rows={4}
+                          onBlur={(e) => (estimateDefaults.bank_details = e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller name</label>
+                          <Input
+                            defaultValue={estimateDefaults.seller_name}
+                            onBlur={(e) => (estimateDefaults.seller_name = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller designation</label>
+                          <Input
+                            defaultValue={estimateDefaults.seller_designation}
+                            onBlur={(e) => (estimateDefaults.seller_designation = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller company</label>
+                          <Input
+                            defaultValue={estimateDefaults.seller_company}
+                            onBlur={(e) => (estimateDefaults.seller_company = e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Seller phone</label>
+                          <Input
+                            defaultValue={estimateDefaults.seller_phone}
+                            onBlur={(e) => (estimateDefaults.seller_phone = e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter className="sm:justify-end px-0">
+                        <Button
+                          type="button"
+                          disabled={updateEstimateDefaultsMutation.isPending}
+                          onClick={() => updateEstimateDefaultsMutation.mutate(estimateDefaults)}
+                        >
+                          {updateEstimateDefaultsMutation.isPending && (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          Save estimate defaults
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  )}
+                </TabsContent>
+              </Tabs>
             </DialogContent>
           </Dialog>
         </div>
@@ -1366,7 +1548,7 @@ export default function Quotations() {
                       <Input
                         value={piBuyerName}
                         onChange={(e) => setPiBuyerName(e.target.value)}
-                        placeholder={defaults?.buyer_name || "Buyer name"}
+                        placeholder={estimateDefaults?.buyer_name || "Buyer name"}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1374,7 +1556,7 @@ export default function Quotations() {
                       <Input
                         value={piSubject}
                         onChange={(e) => setPiSubject(e.target.value)}
-                        placeholder={defaults?.subject || "Subject"}
+                        placeholder={estimateDefaults?.subject || "Subject"}
                       />
                     </div>
                   </div>
@@ -1383,7 +1565,7 @@ export default function Quotations() {
                     <Textarea
                       value={piBuyerAddress}
                       onChange={(e) => setPiBuyerAddress(e.target.value)}
-                      placeholder={defaults?.buyer_address || "Buyer address"}
+                      placeholder={estimateDefaults?.buyer_address || "Buyer address"}
                       rows={3}
                     />
                   </div>
@@ -1393,7 +1575,7 @@ export default function Quotations() {
                       <Input
                         value={piBuyerGstin}
                         onChange={(e) => setPiBuyerGstin(e.target.value)}
-                        placeholder="e.g. 20AAGCM7457A1ZV"
+                        placeholder={estimateDefaults?.buyer_gstin || "e.g. 20AAGCM7457A1ZV"}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1401,7 +1583,7 @@ export default function Quotations() {
                       <Input
                         value={piBuyerPhone}
                         onChange={(e) => setPiBuyerPhone(e.target.value)}
-                        placeholder="Phone"
+                        placeholder={estimateDefaults?.buyer_phone || "Phone"}
                       />
                     </div>
                     <div className="space-y-2 md:col-span-2">
@@ -1409,7 +1591,7 @@ export default function Quotations() {
                       <Input
                         value={piPlaceOfSupply}
                         onChange={(e) => setPiPlaceOfSupply(e.target.value)}
-                        placeholder="e.g. 20-Jharkhand"
+                        placeholder={estimateDefaults?.place_of_supply || "e.g. 20-Jharkhand"}
                       />
                     </div>
                   </div>
@@ -1518,7 +1700,7 @@ export default function Quotations() {
                       </table>
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1">
-                      <span>Leave rows blank to use default product lines from quotation defaults.</span>
+                      <span>Leave rows blank to use default line items from estimate defaults.</span>
                       <Button
                         type="button"
                         variant="outline"
@@ -1639,7 +1821,7 @@ export default function Quotations() {
                 <CardContent>
                   {!showPiPreview ? (
                     <p className="text-sm text-muted-foreground">
-                      Click <span className="font-semibold">View estimate</span> to preview with quotation defaults
+                      Click <span className="font-semibold">View estimate</span> to preview with estimate defaults
                       applied.
                     </p>
                   ) : (

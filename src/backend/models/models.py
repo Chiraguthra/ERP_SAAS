@@ -162,8 +162,28 @@ class QuotationLetter(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class EstimateDefaults(Base):
+    """Defaults for GST-style estimates (proforma), separate from quotation letter defaults."""
+    __tablename__ = "estimate_defaults"
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_name = Column(String, nullable=True)
+    buyer_address = Column(String, nullable=True)
+    buyer_gstin = Column(String, nullable=True)
+    buyer_phone = Column(String, nullable=True)
+    place_of_supply = Column(String, nullable=True)
+    subject = Column(String, nullable=True)
+    product_details = Column(String, nullable=True)
+    remarks = Column(String, nullable=True)
+    terms_and_conditions = Column(String, nullable=True)
+    bank_details = Column(String, nullable=True)
+    seller_name = Column(String, nullable=True)
+    seller_designation = Column(String, nullable=True)
+    seller_company = Column(String, nullable=True)
+    seller_phone = Column(String, nullable=True)
+
+
 class ProformaInvoice(Base):
-    """Saved estimate documents (GST-style PDF); defaults align with quotation letters (same defaults API)."""
+    """Saved estimate documents (GST-style PDF); fallbacks use estimate_defaults."""
     __tablename__ = "proforma_invoices"
     id = Column(Integer, primary_key=True, index=True)
     buyer_name = Column(String, nullable=True)
