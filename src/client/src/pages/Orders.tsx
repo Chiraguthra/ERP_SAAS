@@ -26,13 +26,14 @@ export default function Orders() {
   const { toast } = useToast();
   
   // Parse URL query params (e.g. ?status=pending)
-  const statusFilter = (() => {
+  const initialStatusFilter = (() => {
     const q = searchString?.startsWith("?") ? searchString : searchString ? `?${searchString}` : "";
     return new URLSearchParams(q).get("status")?.toLowerCase() || null;
   })();
 
   // FIX: Controlled state for Search (No useRef)
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || "all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -60,7 +61,7 @@ export default function Orders() {
 
   const { orders, total, isLoading, createOrder, isCreating, deleteOrder, isDeleting } = useOrders({
     q: search,
-    status: statusFilter,
+    status: statusFilter === "all" ? null : statusFilter,
     page,
     pageSize,
   });
@@ -521,28 +522,40 @@ export default function Orders() {
           </Dialog>
         </div>
 
-        {statusFilter && (
+        {statusFilter !== "all" && (
           <div className="flex items-center justify-between gap-4 bg-primary/5 border border-primary/20 rounded-xl px-4 py-3">
             <span className="text-sm font-medium">
               Showing orders: <span className="font-semibold text-primary">{getStatusLabel(statusFilter)}</span>
             </span>
-            <Link href="/orders">
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <X className="w-4 h-4" /> Show all
-              </Button>
-            </Link>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setStatusFilter("all")}>
+              <X className="w-4 h-4" /> Show all
+            </Button>
           </div>
         )}
 
-        <div className="flex items-center gap-4 bg-card p-4 rounded-xl shadow-sm border border-border/50">
+        <div className="flex items-center gap-4 bg-card p-4 rounded-xl shadow-sm border border-border/50 flex-wrap">
           <Search className="w-5 h-5 text-muted-foreground" />
           {/* FIX: Controlled Input - value={search}, no Ref, no defaultValue */}
           <Input 
             placeholder="Search orders by ID or Customer..." 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border-none shadow-none focus-visible:ring-0 bg-transparent h-auto p-0 text-base"
+            className="border-none shadow-none focus-visible:ring-0 bg-transparent h-auto p-0 text-base min-w-[220px] flex-1"
           />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="partial_dispatched">Partial Dispatched</SelectItem>
+              <SelectItem value="dispatched">Dispatched</SelectItem>
+              <SelectItem value="delivered">Delivered</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="returned">Returned</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {isLoading ? (
