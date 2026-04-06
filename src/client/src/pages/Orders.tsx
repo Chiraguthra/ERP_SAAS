@@ -399,7 +399,7 @@ export default function Orders() {
                                       setOpenProductPopoverIndex(null);
                                     }}
                                   >
-                                    {p.name} {p.stock <= 0 ? "(Out of Stock)" : ""}
+                                    {p.name} {Number(p.stock ?? 0) <= 0 ? "(Out of Stock)" : ""}
                                   </CommandItem>
                                 ))}
                               </CommandList>
