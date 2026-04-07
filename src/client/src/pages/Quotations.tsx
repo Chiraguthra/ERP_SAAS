@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, FileText, Settings2, Download, Edit, X } from "lucide-react";
+import { Loader2, FileText, Settings2, Download, Edit, X, MessageCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DataTablePagination } from "@/components/DataTablePagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatINR } from "@/lib/currency";
 
 type QuotationDefaults = {
   buyer_name: string;
@@ -808,6 +809,103 @@ export default function Quotations() {
     setShowPiPreview(false);
   };
 
+  const getValidTillDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    return d.toLocaleDateString("en-GB");
+  };
+
+  const computeQuotationTotal = (productDetails: string) => {
+    const rows = parseProductRows(productDetails).slice(1);
+    return rows.reduce((sum, row) => sum + (parseFloat((row[2] || "").replace(/,/g, "")) || 0), 0);
+  };
+
+  const computeEstimateTotal = (productDetails: string) => {
+    const rows = parsePiProductRows(productDetails).slice(1);
+    return rows.reduce((sum, row) => {
+      const qty = parseFloat(row[2]) || 1;
+      const unit = parseFloat((row[4] || "").replace(/,/g, "")) || 0;
+      const gstPct = parseFloat(row[5]) || 18;
+      const taxable = qty * unit;
+      return sum + taxable + taxable * (gstPct / 100);
+    }, 0);
+  };
+
+  const handleShareOnWhatsApp = async (kind: "quotation" | "estimate", id: number, buyerName?: string | null) => {
+    try {
+      const pdfPath =
+        kind === "quotation"
+          ? `/api/quotation-letters/${id}/pdf`
+          : `/api/proforma-invoices/${id}/pdf`;
+      const detailsPath =
+        kind === "quotation"
+          ? `/api/quotation-letters/${id}`
+          : `/api/proforma-invoices/${id}`;
+
+      const [pdfRes, detailsRes] = await Promise.all([
+        authFetch(pdfPath),
+        authFetch(detailsPath),
+      ]);
+      if (!pdfRes.ok) throw new Error("Failed to load PDF");
+      if (!detailsRes.ok) throw new Error("Failed to load document details");
+
+      const pdfBlob = await pdfRes.blob();
+      const details = (await detailsRes.json()) as { product_details?: string | null };
+      const total =
+        kind === "quotation"
+          ? computeQuotationTotal(details.product_details ?? "")
+          : computeEstimateTotal(details.product_details ?? "");
+
+      const docNo = String(id).padStart(3, "0");
+      const label = kind === "quotation" ? "Quotation" : "Estimate";
+      const buyer = (buyerName || "").trim();
+      const validTill = getValidTillDate();
+      const message = [
+        `Hello, please find your ${label.toLowerCase()}.`,
+        buyer ? `Customer: ${buyer}` : "",
+        `${label} No: ${docNo}`,
+        `Total Amount: ${formatINR(total)}`,
+        `Valid Till: ${validTill}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const fileName = `${label}-${docNo}.pdf`;
+      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
+
+      const nav = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+      };
+
+      if (nav.share && nav.canShare?.({ files: [pdfFile] })) {
+        await nav.share({
+          title: `${label} ${docNo}`,
+          text: message,
+          files: [pdfFile],
+        });
+        return;
+      }
+
+      // Fallback for browsers that cannot attach files through Web Share.
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Downloaded",
+        description: "PDF downloaded. Your browser does not support file-attachment sharing directly.",
+      });
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Failed to share on WhatsApp",
+        variant: "destructive",
+      });
+    }
+  };
+
   const defaults = defaultsQuery.data;
   const estimateDefaults = estimateDefaultsQuery.data;
 
@@ -1512,6 +1610,14 @@ export default function Quotations() {
                                 >
                                   <Download className="w-4 h-4" />
                                 </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleShareOnWhatsApp("quotation", q.id, q.buyer_name)}
+                                  aria-label="Share quotation on WhatsApp"
+                                >
+                                  <MessageCircle className="w-4 h-4 text-green-600" />
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -2013,6 +2119,14 @@ export default function Quotations() {
                                       aria-label="Download estimate PDF"
                                     >
                                       <Download className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleShareOnWhatsApp("estimate", q.id, q.buyer_name)}
+                                      aria-label="Share estimate on WhatsApp"
+                                    >
+                                      <MessageCircle className="w-4 h-4 text-green-600" />
                                     </Button>
                                   </div>
                                 </TableCell>
