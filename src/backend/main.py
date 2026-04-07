@@ -234,6 +234,16 @@ for col_name, col_type in (_order_ref_columns_sqlite if is_sqlite else _order_re
     except Exception:
         pass  # Column already exists
 
+for col_name, col_type in (
+    [("assigned_to", "TEXT")] if is_sqlite else [("assigned_to", "VARCHAR")]
+):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}"))
+            conn.commit()
+    except Exception:
+        pass  # Column already exists
+
 # Add logistics.quantity column if missing
 try:
     with engine.connect() as conn:

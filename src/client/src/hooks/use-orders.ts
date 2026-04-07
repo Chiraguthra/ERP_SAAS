@@ -158,6 +158,7 @@ export function useOrder(id: number) {
       deliveryNoteDate?: string | null;
       destination?: string | null;
       termsOfDelivery?: string | null;
+      assignedTo?: string | null;
       freightCharges?: number;
       adjustments?: number;
       cgstPercent?: number | null;

@@ -19,11 +19,13 @@ import { Plus, Search, Loader2, Minus, Edit, Trash2, ChevronDown, Eye } from "lu
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { formatINR } from "@/lib/currency";
 
 export default function Orders() {
   const searchString = useSearch();
   const { toast } = useToast();
+  const { user } = useAuth();
   
   // Parse URL query params (e.g. ?status=pending)
   const initialStatusFilter = (() => {
@@ -57,7 +59,14 @@ export default function Orders() {
   const [deliveryNoteDate, setDeliveryNoteDate] = useState<string>("");
   const [destination, setDestination] = useState<string>("");
   const [termsOfDelivery, setTermsOfDelivery] = useState<string>("");
+  const [assignedTo, setAssignedTo] = useState<string>("");
   const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number; price?: number }[]>([{ productId: "", quantity: 1 }]);
+
+  useEffect(() => {
+    if (isCreateOpen && user) {
+      setAssignedTo((user.name || user.username || "").trim());
+    }
+  }, [isCreateOpen, user]);
 
   const { orders, total, isLoading, createOrder, isCreating, deleteOrder, isDeleting } = useOrders({
     q: search,
@@ -189,6 +198,7 @@ export default function Orders() {
       deliveryNoteDate: deliveryNoteDate.trim() || undefined,
       destination: destination.trim() || undefined,
       termsOfDelivery: termsOfDelivery.trim() || undefined,
+      assignedTo: assignedTo.trim() || undefined,
       freightCharges: freight || undefined,
       adjustments: adjust || undefined,
       cgstPercent: cgstPct || undefined,
@@ -211,6 +221,7 @@ export default function Orders() {
         setDeliveryNoteDate("");
         setDestination("");
         setTermsOfDelivery("");
+        setAssignedTo((user?.name || user?.username || "").trim());
         setFreightCharges("");
         setAdjustments("");
         setCgstPercent("");
@@ -316,6 +327,16 @@ export default function Orders() {
                     placeholder="Phone for this order (overrides customer default)"
                     className="w-full"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Assigned to</label>
+                  <Input
+                    value={assignedTo}
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    placeholder="Staff name"
+                    className="w-full max-w-md"
+                  />
+                  <p className="text-xs text-muted-foreground">Defaults to your name; you can change it before saving.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 border-t pt-4">
@@ -573,13 +594,14 @@ export default function Orders() {
                     <TableHead>Status changed</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Assigned to</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {orders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                         No orders found
                       </TableCell>
                     </TableRow>
@@ -594,6 +616,9 @@ export default function Orders() {
                         <TableCell className="font-semibold">{formatINR(order.totalAmount)}</TableCell>
                         <TableCell>
                           <StatusBadge status={order.status} />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm max-w-[140px] truncate" title={(order as { assignedTo?: string | null }).assignedTo ?? ""}>
+                          {(order as { assignedTo?: string | null }).assignedTo?.trim() || "—"}
                         </TableCell>
                         <TableCell className="text-right space-x-2">
                           {(order.status || "").toString().toLowerCase() === "pending" ? (

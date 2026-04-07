@@ -184,6 +184,10 @@ export const api = {
       path: '/api/analytics',
       responses: {
         200: z.object({
+          fiscalYearStart: z.coerce.number().optional(),
+          fiscalYearLabel: z.string().optional(),
+          fiscalYearFrom: z.string().optional(),
+          fiscalYearTo: z.string().optional(),
           totalOrders: z.coerce.number(),
           totalRevenue: z.coerce.number(),
           averageOrderValue: z.coerce.number(),

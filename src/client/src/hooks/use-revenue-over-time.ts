@@ -86,16 +86,21 @@ const REVENUE_OVER_TIME_PATH = "/api/analytics/revenue-over-time";
 export function useRevenueOverTime(
   fromDate: string,
   toDate: string,
-  groupBy: "day" | "month" | "year"
+  groupBy: "day" | "month" | "year",
+  fy?: number | null
 ) {
+  const byFy = fy != null && !Number.isNaN(Number(fy));
   return useQuery({
-    queryKey: [REVENUE_OVER_TIME_PATH, fromDate, toDate, groupBy],
+    queryKey: [REVENUE_OVER_TIME_PATH, byFy ? `fy:${fy}` : fromDate, byFy ? "" : toDate, groupBy],
     queryFn: async (): Promise<RevenueOverTimeData> => {
-      const params = new URLSearchParams({
-        from_date: fromDate,
-        to_date: toDate,
-        group_by: groupBy,
-      });
+      const params = new URLSearchParams();
+      params.set("group_by", byFy ? "month" : groupBy);
+      if (byFy) {
+        params.set("fy", String(fy));
+      } else {
+        params.set("from_date", fromDate);
+        params.set("to_date", toDate);
+      }
       const res = await authFetch(`${REVENUE_OVER_TIME_PATH}?${params}`);
       if (!res.ok) {
         const text = await res.text();
@@ -113,6 +118,6 @@ export function useRevenueOverTime(
         })),
       };
     },
-    enabled: !!fromDate && !!toDate,
+    enabled: byFy || (!!fromDate && !!toDate),
   });
 }

@@ -54,6 +54,7 @@ export default function OrderDetail() {
   const [deliveryNoteDateInput, setDeliveryNoteDateInput] = useState("");
   const [destinationInput, setDestinationInput] = useState("");
   const [termsOfDeliveryInput, setTermsOfDeliveryInput] = useState("");
+  const [assignedToInput, setAssignedToInput] = useState("");
   const [freightInput, setFreightInput] = useState("");
   const [adjustmentsInput, setAdjustmentsInput] = useState("");
   const [cgstPercentInput, setCgstPercentInput] = useState("");
@@ -78,6 +79,7 @@ export default function OrderDetail() {
     setDeliveryNoteDateInput(dnd ? dnd.slice(0, 10) : "");
     setDestinationInput((o.destination as string) ?? "");
     setTermsOfDeliveryInput((o.termsOfDelivery as string) ?? "");
+    setAssignedToInput((o.assignedTo as string) ?? "");
     const ext = order as unknown as { freightCharges?: number; adjustments?: number; cgstPercent?: number | null; sgstPercent?: number | null; igstPercent?: number | null };
     setFreightInput(ext.freightCharges != null ? String(ext.freightCharges) : "");
     setAdjustmentsInput(ext.adjustments != null ? String(ext.adjustments) : "");
@@ -117,6 +119,7 @@ export default function OrderDetail() {
       deliveryNoteDate: deliveryNoteDateInput.trim() ? `${deliveryNoteDateInput}T00:00:00` : null,
       destination: destinationInput.trim() || null,
       termsOfDelivery: termsOfDeliveryInput.trim() || null,
+      assignedTo: assignedToInput.trim() || null,
     };
     if (isPendingOrder) {
       payload.freightCharges = parseFloat(freightInput) || 0;
@@ -769,6 +772,16 @@ export default function OrderDetail() {
                       onChange={(e) => setContactNumberInput(e.target.value)}
                       placeholder="Phone for this order"
                       disabled={isUpdatingOrder}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">Assigned to</label>
+                    <Input
+                      value={assignedToInput}
+                      onChange={(e) => setAssignedToInput(e.target.value)}
+                      placeholder="Staff name"
+                      disabled={isUpdatingOrder}
+                      className="max-w-md"
                     />
                   </div>
                 </div>
