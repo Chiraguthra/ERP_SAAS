@@ -370,28 +370,41 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     c.drawCentredString(width / 2, y, "QUOTATION")
     y -= line_height * 1.2
 
+    # Text width for body copy (same as left/right margins)
+    content_width = x_right - x_left
+
     # ── TO BLOCK ──
     c.setFont(font_regular, body_font)
     c.drawString(x_left, y, "To,")
     y -= line_height
     if q.buyer_name:
         c.setFont(font_bold, body_font)
-        c.drawString(x_left, y, q.buyer_name)
+        name = _pdf_safe((q.buyer_name or "").strip())
+        if name:
+            for wrapped in simpleSplit(name, font_bold, body_font, content_width):
+                c.drawString(x_left, y, wrapped)
+                y -= line_height
         c.setFont(font_regular, body_font)
-        y -= line_height
     if q.buyer_address:
+        c.setFont(font_regular, body_font)
         for line in (q.buyer_address or "").splitlines():
-            if line.strip():
-                c.drawString(x_left, y, _pdf_safe(line.strip()))
+            stripped = line.strip()
+            if not stripped:
+                continue
+            for wrapped in simpleSplit(_pdf_safe(stripped), font_regular, body_font, content_width):
+                c.drawString(x_left, y, wrapped)
                 y -= line_height
 
     y -= line_height * 0.6
     # ── SUBJECT ──
     if q.subject:
         c.setFont(font_bold, body_font)
-        c.drawString(x_left, y, _pdf_safe(f"Sub: {q.subject}"))
+        subj = _pdf_safe(f"Sub: {q.subject}".strip())
+        for wrapped in simpleSplit(subj, font_bold, body_font, content_width):
+            c.drawString(x_left, y, wrapped)
+            y -= line_height
         c.setFont(font_regular, body_font)
-        y -= line_height * 1.4
+        y -= line_height * 0.4
 
     c.drawString(x_left, y, "Dear Sir,")
     y -= line_height

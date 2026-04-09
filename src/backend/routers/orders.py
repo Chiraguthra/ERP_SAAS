@@ -38,6 +38,7 @@ class OrderCreate(BaseModel):
     destination: Optional[str] = None
     termsOfDelivery: Optional[str] = None
     contactNumber: Optional[str] = None
+    assignedTo: Optional[str] = None
 
 
 def _sync_order_dispatch_status(order: models.Order):
@@ -146,6 +147,7 @@ def _order_to_response(o):
         ("destination", "destination"),
         ("terms_of_delivery", "termsOfDelivery"),
         ("contact_number", "contactNumber"),
+        ("assigned_to", "assignedTo"),
     ]:
         v = getattr(o, attr, None)
         out[key] = (v.strip() if v and isinstance(v, str) else v) or None
@@ -250,6 +252,10 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db), current_user
     def _s(s):
         return (s or "").strip() or None
 
+    assignee = _s(order.assignedTo)
+    if not assignee:
+        assignee = _s(current_user.name) or _s(current_user.username)
+
     db_order = models.Order(
         customer_id=order.customerId,
         total_amount=total,
@@ -271,6 +277,7 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db), current_user
         destination=_s(order.destination),
         terms_of_delivery=_s(order.termsOfDelivery),
         contact_number=_s(order.contactNumber),
+        assigned_to=assignee,
     )
     try:
         db.add(db_order)
@@ -330,6 +337,7 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
             ("destination", "destination"),
             ("terms_of_delivery", "termsOfDelivery"),
             ("contact_number", "contactNumber"),
+            ("assigned_to", "assignedTo"),
         ]:
             _set_order_str(db_order, attr, key, payload)
         if "deliveryNoteDate" in payload:

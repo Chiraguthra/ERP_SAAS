@@ -1,8 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { authFetch } from "@/lib/authFetch";
+import { fiscalYearLabel, indianFyStartYearFromDate } from "@/lib/fiscalYear";
 
 type AnalyticsData = {
+  fiscalYearStart: number;
+  fiscalYearLabel: string;
+  fiscalYearFrom: string;
+  fiscalYearTo: string;
   totalOrders: number;
   totalRevenue: number;
   averageOrderValue: number;
@@ -65,18 +70,40 @@ function toTopCustomers(v: unknown): { id: number; name: string; orders: number;
   });
 }
 
-export function useAnalytics() {
+function toFiscalMeta(raw: Record<string, unknown>, fallbackStart: number): Pick<
+  AnalyticsData,
+  "fiscalYearStart" | "fiscalYearLabel" | "fiscalYearFrom" | "fiscalYearTo"
+> {
+  const start = toNumber(raw?.fiscalYearStart ?? raw?.fiscal_year_start) || fallbackStart;
+  const labelRaw = raw?.fiscalYearLabel ?? raw?.fiscal_year_label;
+  const label = typeof labelRaw === "string" && labelRaw ? labelRaw : fiscalYearLabel(start);
+  const from = String(raw?.fiscalYearFrom ?? raw?.fiscal_year_from ?? "").trim();
+  const to = String(raw?.fiscalYearTo ?? raw?.fiscal_year_to ?? "").trim();
+  return {
+    fiscalYearStart: start,
+    fiscalYearLabel: label,
+    fiscalYearFrom: from,
+    fiscalYearTo: to,
+  };
+}
+
+export function useAnalytics(fy?: number | null) {
+  const qs = fy != null && !Number.isNaN(Number(fy)) ? `?fy=${encodeURIComponent(String(fy))}` : "";
   return useQuery({
-    queryKey: [api.analytics.get.path],
+    queryKey: [api.analytics.get.path, fy ?? "default"],
     queryFn: async (): Promise<AnalyticsData> => {
-      const res = await authFetch(api.analytics.get.path);
+      const res = await authFetch(`${api.analytics.get.path}${qs}`);
       if (!res.ok) {
         const text = await res.text();
         if (res.status === 401) throw new Error("Please log in again.");
         throw new Error(text || `Failed to fetch analytics (${res.status})`);
       }
       const raw = (await res.json()) as Record<string, unknown>;
+      const fyFallback =
+        fy != null && !Number.isNaN(Number(fy)) ? Number(fy) : indianFyStartYearFromDate();
+      const fiscal = toFiscalMeta(raw, fyFallback);
       return {
+        ...fiscal,
         totalOrders: toNumber(raw?.totalOrders ?? raw?.total_orders),
         totalRevenue: toNumber(raw?.totalRevenue ?? raw?.total_revenue),
         averageOrderValue: toNumber(raw?.averageOrderValue ?? raw?.average_order_value),

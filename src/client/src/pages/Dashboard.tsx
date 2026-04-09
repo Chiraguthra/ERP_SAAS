@@ -1,11 +1,8 @@
 import { Layout } from "@/components/Layout";
 import { useAnalytics } from "@/hooks/use-analytics";
-import {
-  useRevenueOverTime,
-  getPresetDates,
-  type RevenuePeriodPreset,
-} from "@/hooks/use-revenue-over-time";
+import { useRevenueOverTime } from "@/hooks/use-revenue-over-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,10 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Loader2, TrendingUp, ShoppingBag, IndianRupee, Package, Users, Truck } from "lucide-react";
 import { formatINR } from "@/lib/currency";
+import { fiscalYearLabel, indianFyStartYearFromDate, recentIndianFyStartYears } from "@/lib/fiscalYear";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell 
 } from "recharts";
@@ -24,7 +20,13 @@ import { useLocation } from "wouter";
 import { getStatusLabel } from "@/lib/orderStatus";
 import { useMemo, useState } from "react";
 
+const FY_CHOICE_COUNT = 6;
+
 const defaultAnalytics = {
+  fiscalYearStart: 0,
+  fiscalYearLabel: "",
+  fiscalYearFrom: "",
+  fiscalYearTo: "",
   totalOrders: 0,
   totalRevenue: 0,
   averageOrderValue: 0,
@@ -48,24 +50,15 @@ const defaultAnalytics = {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
-  const { data, isLoading, isError, error } = useAnalytics();
+  const fyYearChoices = useMemo(() => recentIndianFyStartYears(FY_CHOICE_COUNT), []);
+  const [fyStartYear, setFyStartYear] = useState(() => indianFyStartYearFromDate());
 
-  const [revenuePreset, setRevenuePreset] = useState<RevenuePeriodPreset>("this_month");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const { data, isLoading, isError, error } = useAnalytics(fyStartYear);
 
-  const revenueParams = useMemo(
-    () => getPresetDates(revenuePreset, customFrom || undefined, customTo || undefined),
-    [revenuePreset, customFrom, customTo]
-  );
   const {
     data: revenueData,
     isLoading: revenueLoading,
-  } = useRevenueOverTime(
-    revenueParams.from_date,
-    revenueParams.to_date,
-    revenueParams.group_by
-  );
+  } = useRevenueOverTime("", "", "month", fyStartYear);
   const revenueChartData = revenueData?.data ?? [];
   const totalRevenuePeriod = revenueChartData.reduce((s, d) => s + d.revenue, 0);
 
@@ -94,9 +87,34 @@ export default function Dashboard() {
             {error?.message ?? "Failed to load analytics."}
           </div>
         )}
-        <div>
-          <h2 className="text-3xl font-display font-bold">Dashboard</h2>
-          <p className="text-muted-foreground">Overview of your business performance</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-3xl font-display font-bold">Dashboard</h2>
+            <p className="text-muted-foreground">Overview of your business performance</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Metrics and charts use {analytics.fiscalYearLabel || fiscalYearLabel(fyStartYear)} (April–March).
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:min-w-[200px]">
+            <Label htmlFor="dashboard-fy" className="text-sm font-medium">
+              Financial year
+            </Label>
+            <Select
+              value={String(fyStartYear)}
+              onValueChange={(v) => setFyStartYear(Number(v))}
+            >
+              <SelectTrigger id="dashboard-fy" className="h-10 w-full sm:w-[220px]">
+                <SelectValue placeholder="Select FY" />
+              </SelectTrigger>
+              <SelectContent>
+                {fyYearChoices.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {fiscalYearLabel(y)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* KPI Cards */}
@@ -109,7 +127,7 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold font-display">{formatINR(analytics.totalRevenue ?? 0)}</div>
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                <TrendingUp className="w-3 h-3 text-green-500" /> From delivered orders
+                <TrendingUp className="w-3 h-3 text-green-500" /> Delivered orders, selected FY
               </p>
             </CardContent>
           </Card>
@@ -122,7 +140,7 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold font-display">{analytics.totalOrders ?? 0}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Across all statuses
+                All statuses, selected FY
               </p>
             </CardContent>
           </Card>
@@ -135,7 +153,7 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold font-display">{formatINR(analytics.averageOrderValue ?? 0)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Per delivered order
+                Per delivered order, selected FY
               </p>
             </CardContent>
           </Card>
@@ -146,7 +164,9 @@ export default function Dashboard() {
           <Card className="col-span-1 shadow-lg shadow-black/5">
             <CardHeader>
               <CardTitle>Order Status Distribution</CardTitle>
-              <p className="text-xs text-muted-foreground font-normal mt-1">Click a bar to view orders with that status</p>
+              <p className="text-xs text-muted-foreground font-normal mt-1">
+                Selected FY • click a bar to filter orders by status
+              </p>
             </CardHeader>
             <CardContent className="h-[300px]">
               {chartData.length > 0 ? (
@@ -186,6 +206,7 @@ export default function Dashboard() {
           <Card className="col-span-1 shadow-lg shadow-black/5">
             <CardHeader>
               <CardTitle>Top Selling Products</CardTitle>
+              <p className="text-xs text-muted-foreground font-normal mt-1">Quantities in selected FY</p>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -211,60 +232,12 @@ export default function Dashboard() {
         {/* Quick-win metrics: Revenue over time + Open Order Aging in same row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card className="shadow-lg shadow-black/5">
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>Revenue Over Time</CardTitle>
-                <p className="text-xs text-muted-foreground font-normal mt-1">
-                  Delivered orders • {revenueData ? formatINR(totalRevenuePeriod) : "—"} in selected period
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={revenuePreset}
-                  onValueChange={(v) => {
-                    const next = v as RevenuePeriodPreset;
-                    setRevenuePreset(next);
-                    if (next === "custom") {
-                      const n = new Date();
-                      setCustomFrom(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`);
-                      setCustomTo(n.toISOString().slice(0, 10));
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[140px] h-9">
-                    <SelectValue placeholder="Period" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="this_month">This month</SelectItem>
-                    <SelectItem value="last_month">Last month</SelectItem>
-                    <SelectItem value="this_year">This year</SelectItem>
-                    <SelectItem value="last_year">Last year</SelectItem>
-                    <SelectItem value="custom">Custom range</SelectItem>
-                  </SelectContent>
-                </Select>
-                {revenuePreset === "custom" && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1">
-                      <Label className="text-xs whitespace-nowrap">From</Label>
-                      <Input
-                        type="date"
-                        className="h-9 w-[130px]"
-                        value={customFrom}
-                        onChange={(e) => setCustomFrom(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Label className="text-xs whitespace-nowrap">To</Label>
-                      <Input
-                        type="date"
-                        className="h-9 w-[130px]"
-                        value={customTo}
-                        onChange={(e) => setCustomTo(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+            <CardHeader>
+              <CardTitle>Revenue Over Time</CardTitle>
+              <p className="text-xs text-muted-foreground font-normal mt-1">
+                Delivered orders by month • {revenueData ? formatINR(totalRevenuePeriod) : "—"} in{" "}
+                {analytics.fiscalYearLabel || fiscalYearLabel(fyStartYear)}
+              </p>
             </CardHeader>
             <CardContent className="h-[280px]">
               {revenueLoading ? (
@@ -297,7 +270,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                  No revenue data for selected period
+                  No revenue in this financial year yet
                 </div>
               )}
             </CardContent>
@@ -306,7 +279,9 @@ export default function Dashboard() {
           <Card className="shadow-lg shadow-black/5">
             <CardHeader>
               <CardTitle>Open Order Aging</CardTitle>
-              <p className="text-xs text-muted-foreground font-normal mt-1">Orders not yet delivered/returned</p>
+              <p className="text-xs text-muted-foreground font-normal mt-1">
+                Open orders in selected FY (not yet delivered/returned)
+              </p>
             </CardHeader>
             <CardContent className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -334,7 +309,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-display">{(analytics.repeatCustomerRate ?? 0).toFixed(1)}%</div>
-              <p className="text-xs text-muted-foreground mt-1">Customers with 2+ orders</p>
+              <p className="text-xs text-muted-foreground mt-1">Customers with 2+ orders in selected FY</p>
             </CardContent>
           </Card>
 
@@ -346,7 +321,8 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold font-display">{(analytics.deliveryPerformance?.deliveredRate ?? 0).toFixed(1)}%</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Avg delivery cycle: {(analytics.deliveryPerformance?.avgDispatchToDeliveryHours ?? 0).toFixed(1)} hrs
+                Delivered orders in FY • avg dispatch→delivery{" "}
+                {(analytics.deliveryPerformance?.avgDispatchToDeliveryHours ?? 0).toFixed(1)} hrs
               </p>
             </CardContent>
           </Card>
@@ -357,6 +333,7 @@ export default function Dashboard() {
           <Card className="shadow-lg shadow-black/5">
             <CardHeader>
               <CardTitle>Top Customers (Delivered Revenue)</CardTitle>
+              <p className="text-xs text-muted-foreground font-normal mt-1">Selected FY</p>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
