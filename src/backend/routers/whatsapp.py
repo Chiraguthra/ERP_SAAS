@@ -2,13 +2,21 @@
 WhatsApp webhook: receives incoming messages, parses text for actions
 (ADD CUSTOMER, ADD PRODUCT, CREATE ORDER) and executes them.
 Supports WhatsApp Cloud API payload format and a simple { "message": "text" } format.
+
+Configure Meta webhook URL (GET + POST):
+  {PUBLIC_BASE_URL}/api/whatsapp/webhook
+Set the same Verify Token in Meta as env WEBHOOK_VERIFY_TOKEN.
+For outbound replies, set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN.
 """
 import os
 import re
 import uuid
+import logging
 from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -23,8 +31,30 @@ from .orders import (
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "retailer-webhook-verify")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")  # Optional: set to validate incoming POST signature
+WHATSAPP_GRAPH_VERSION = os.getenv("WHATSAPP_GRAPH_VERSION", "v21.0")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+
+GREETING_REPLY = """Thank you for reaching out to us. 🙏
+We are a one-stop destination for all your construction & project management needs — from planning to execution, we handle it all with precision and quality.
+🏗️ Our Core Services:
+✅ Project Planning & Scheduling
+✅ Quantity Surveying, Estimation & Costing
+✅ Quality Assurance & Control
+✅ Vendor Management
+✅ Owner's Representation
+✅ Resource Monitoring & Mobilization
+✅ Bid Proposals & Consultancy
+Whether you're building a home, managing a commercial site, or looking for expert techno-management support — SilverLine is here to make your project a success.
+💡 We bring expertise, transparency, and accountability to every project we touch.
+📞 Call us: +91 99625 87081
+📧 info@silverlinetm.com
+🌐 silverlinetm.com
+How can we assist you today? 😊"""
 
 
 def _extract_message_text(body: Any) -> Optional[str]:
@@ -48,6 +78,101 @@ def _extract_message_text(body: Any) -> Optional[str]:
                 if isinstance(text_obj.get("body"), str):
                     return text_obj["body"].strip()
     return None
+
+
+def _iter_cloud_incoming_text_messages(body: Any) -> list[tuple[str, str]]:
+    """Extract (whatsapp_from_id, text_body) for each incoming user text message (Cloud API)."""
+    out: list[tuple[str, str]] = []
+    if not body or not isinstance(body, dict):
+        return out
+    for entry in body.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            value = (change or {}).get("value") or {}
+            for msg in value.get("messages") or []:
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get("type") != "text":
+                    continue
+                wa_from = msg.get("from")
+                if not wa_from:
+                    continue
+                text_obj = (msg.get("text") or {})
+                body_text = (text_obj.get("body") or "").strip() if isinstance(text_obj, dict) else ""
+                if body_text:
+                    out.append((str(wa_from), body_text))
+    return out
+
+
+def _is_greeting(text: str) -> bool:
+    """True for common short greetings (hi, hello, good morning, namaste, etc.)."""
+    raw = (text or "").strip().lower()
+    if not raw:
+        return False
+    # normalize spaces / zero-width
+    t = re.sub(r"[\s\u200c\u200d]+", " ", raw)
+    t = re.sub(r"[.,!?\u2026]+$", "", t).strip()
+    if not t:
+        return False
+    # strip leading emoji / punctuation
+    t = re.sub(r"^[\s\W_]+", "", t, flags=re.UNICODE).strip()
+    if not t:
+        return False
+
+    greeting_tokens = {
+        "hi", "hii", "hai", "hey", "hello", "hallo", "hola", "yo", "gm", "ga", "ge", "gn",
+        "namaste", "namaskar", "namashkar", "sir", "madam", "dear",
+    }
+    good_day = {"morning", "afternoon", "evening", "night", "day"}
+    words = t.split()
+    first = words[0]
+
+    if re.match(r"^h+i+[!.,?$]*$", first, re.IGNORECASE):
+        return True
+    if first in greeting_tokens:
+        return True
+    if first in ("good", "gud") and len(words) >= 2 and words[1] in good_day:
+        return True
+    if t in ("hi", "hello", "hey", "namaste"):
+        return True
+    # "hi there", "hello team"
+    if first in ("hi", "hello", "hey") and len(words) <= 4:
+        return True
+    return False
+
+
+async def _send_whatsapp_text(to_wa_id: str, body: str) -> tuple[bool, str]:
+    """
+    Send a text message via WhatsApp Cloud API.
+    to_wa_id: digits only, country code, no + (e.g. 9199xxxxxxxx).
+    """
+    if not WHATSAPP_PHONE_NUMBER_ID or not WHATSAPP_ACCESS_TOKEN:
+        logger.warning("WhatsApp reply skipped: set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN")
+        return False, "WhatsApp API not configured"
+    url = f"https://graph.facebook.com/{WHATSAPP_GRAPH_VERSION}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_wa_id,
+        "type": "text",
+        "text": {"preview_url": False, "body": body},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(url, headers=headers, json=payload)
+    except Exception as e:
+        logger.exception("WhatsApp Graph API request failed")
+        return False, str(e)
+    if r.status_code >= 300:
+        err = r.text[:800] if r.text else ""
+        logger.error("WhatsApp Graph API error %s: %s", r.status_code, err)
+        return False, f"HTTP {r.status_code}: {err}"
+    return True, "sent"
 
 
 def _parse_key_value_lines(text: str) -> dict[str, str]:
@@ -206,27 +331,14 @@ async def whatsapp_verify(
     hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
 ):
-    """WhatsApp Cloud API webhook verification: return hub.challenge if token matches."""
+    """WhatsApp Cloud API webhook verification: return hub.challenge as plain text if token matches."""
     if hub_mode == "subscribe" and hub_verify_token == WEBHOOK_VERIFY_TOKEN and hub_challenge is not None:
-        return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+        return PlainTextResponse(content=str(hub_challenge))
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
-@router.post("/whatsapp/webhook")
-async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Receive incoming WhatsApp message (Cloud API or simple { "message": "text" }).
-    Parse text for: ADD CUSTOMER, ADD PRODUCT, CREATE ORDER and execute.
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-
-    text = _extract_message_text(body)
-    if not text:
-        return {"status": "ignored", "reason": "no_message_text"}
-
+def _run_erp_whatsapp_action(text: str, db: Session) -> dict:
+    """Execute ERP command from message text; raises HTTPException on validation errors."""
     action, body_text = _parse_action_and_body(text)
 
     if not action:
@@ -292,6 +404,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_product)
         from .products import _product_to_response
+
         return {"status": "ok", "action": "add_product", "product": _product_to_response(db_product)}
 
     # ----- CREATE ORDER -----
@@ -353,4 +466,53 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         out["items"] = [_order_item_to_response(i) for i in db_order.items]
         return {"status": "ok", "action": "create_order", "order": out}
 
-    return {"status": "ignored", "reason": f"unknown_action", "action_received": action}
+    return {"status": "ignored", "reason": "unknown_action", "action_received": action}
+
+
+@router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Receive incoming WhatsApp message (Cloud API or simple { "message": "text" }).
+    Replies to greetings via Cloud API; otherwise runs ADD CUSTOMER / ADD PRODUCT / CREATE ORDER.
+    Returns 200 for Cloud deliveries so Meta does not retry indefinitely.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    cloud_messages = _iter_cloud_incoming_text_messages(body)
+    results: list[dict] = []
+
+    if cloud_messages:
+        for wa_id, msg_text in cloud_messages:
+            if _is_greeting(msg_text):
+                ok, detail = await _send_whatsapp_text(wa_id, GREETING_REPLY)
+                results.append({"from": wa_id, "handled": "greeting", "sent": ok, "detail": detail})
+                continue
+            try:
+                erp = _run_erp_whatsapp_action(msg_text, db)
+                results.append({"from": wa_id, "handled": "erp", "result": erp})
+            except HTTPException as he:
+                db.rollback()
+                err_txt = he.detail if isinstance(he.detail, str) else "Request could not be completed."
+                await _send_whatsapp_text(wa_id, f"⚠️ {err_txt}")
+                results.append({"from": wa_id, "handled": "erp_error", "detail": err_txt})
+        return {"status": "ok", "results": results}
+
+    text = _extract_message_text(body)
+    if not text:
+        return {"status": "ignored", "reason": "no_message_text"}
+
+    if _is_greeting(text):
+        return {
+            "status": "ok",
+            "handled": "greeting",
+            "note": "Use Meta webhook to receive sender id; set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to send replies.",
+            "would_reply_with": GREETING_REPLY,
+        }
+
+    try:
+        return _run_erp_whatsapp_action(text, db)
+    except HTTPException:
+        raise
