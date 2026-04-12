@@ -19,6 +19,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DataTablePagination } from "@/components/DataTablePagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CustomerApprovedRatesTab } from "@/components/CustomerApprovedRatesTab";
+import { useCustomers } from "@/hooks/use-customers";
 import { formatINR } from "@/lib/currency";
 
 type QuotationDefaults = {
@@ -231,6 +241,9 @@ export default function Quotations() {
   const [piProductRows, setPiProductRows] = useState<PiProductRow[]>([
     { srNo: "1.", item: "", qty: "1", uom: "", unitPrice: "", gstPct: "18" },
   ]);
+  const [piCustomerId, setPiCustomerId] = useState("");
+  const [piRatesAsOf, setPiRatesAsOf] = useState("");
+  const [loadingApprovedRates, setLoadingApprovedRates] = useState(false);
   const [editingProformaId, setEditingProformaId] = useState<number | null>(null);
   const [showPiPreview, setShowPiPreview] = useState(false);
   const [piPage, setPiPage] = useState(1);
@@ -239,6 +252,8 @@ export default function Quotations() {
   const [isDefaultsOpen, setIsDefaultsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const { customers: estimateCustomers } = useCustomers({ page: 1, pageSize: 200 });
 
   const defaultsQuery = useQuery({
     queryKey: ["/api/quotation-letter-defaults"],
@@ -806,7 +821,102 @@ export default function Quotations() {
     setPiSellerCompany("");
     setPiSellerPhone("");
     setPiProductRows([{ srNo: "1.", item: "", qty: "1", uom: "", unitPrice: "", gstPct: "18" }]);
+    setPiCustomerId("");
+    setPiRatesAsOf("");
     setShowPiPreview(false);
+  };
+
+  const estimateCustomerLabel = (c: { id: number; name?: string | null; company?: string | null }) =>
+    c.company?.trim() || c.name?.trim() || `Customer #${c.id}`;
+
+  const fillPiBuyerFromCustomer = async () => {
+    if (!piCustomerId) {
+      toast({ title: "Select a customer", variant: "destructive" });
+      return;
+    }
+    try {
+      const r = await authFetch(`/api/customers/${piCustomerId}`);
+      if (!r.ok) throw new Error("Failed to load customer");
+      const c = (await r.json()) as {
+        name?: string;
+        company?: string;
+        address?: string;
+        city?: string;
+        state?: string;
+        pinCode?: number | null;
+        gstin?: string;
+        phone?: string;
+      };
+      setPiBuyerName(c.company?.trim() || c.name?.trim() || "");
+      setPiBuyerAddress(
+        [c.address, c.city, c.state, c.pinCode != null ? String(c.pinCode) : ""].filter(Boolean).join(", ")
+      );
+      setPiBuyerGstin(c.gstin || "");
+      setPiBuyerPhone(c.phone || "");
+      toast({ title: "Buyer fields updated from customer" });
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Failed to load customer",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadApprovedRatesIntoEstimate = async () => {
+    if (!piCustomerId) {
+      toast({
+        title: "Select a customer",
+        description: "Choose a customer that has approved rates, or add rates under the Approved rates tab.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLoadingApprovedRates(true);
+    try {
+      const sp = new URLSearchParams({ customer_id: piCustomerId });
+      if (piRatesAsOf.trim()) sp.set("as_of", piRatesAsOf.trim());
+      const r = await authFetch(`/api/customer-approved-rates/for-estimate?${sp.toString()}`);
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { detail?: string }).detail ?? "Failed to load rates");
+      }
+      const j = (await r.json()) as {
+        items: Array<{
+          itemName: string;
+          uom: string;
+          unitPrice: number;
+          gstPercent: number;
+        }>;
+      };
+      if (!j.items?.length) {
+        toast({
+          title: "No valid rates",
+          description: "No approved rates for this customer on the selected date. Check the Approved rates tab.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setPiProductRows(
+        j.items.map((it, idx) => ({
+          srNo: `${idx + 1}.`,
+          item: it.itemName,
+          qty: "1",
+          uom: it.uom || "",
+          unitPrice: String(it.unitPrice),
+          gstPct: String(it.gstPercent ?? 18),
+        }))
+      );
+      toast({ title: "Line items loaded", description: `${j.items.length} row(s) from approved rates` });
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Failed to load rates",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingApprovedRates(false);
+    }
   };
 
   const getValidTillDate = () => {
@@ -1183,6 +1293,7 @@ export default function Quotations() {
           <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="quotation">Quotations</TabsTrigger>
             <TabsTrigger value="estimate">Estimate</TabsTrigger>
+            <TabsTrigger value="approved-rates">Approved rates</TabsTrigger>
           </TabsList>
 
           <TabsContent value="quotation" className="space-y-6 mt-4">
@@ -1666,6 +1777,59 @@ export default function Quotations() {
                       />
                     </div>
                   </div>
+                  <div className="space-y-3 p-3 rounded-lg border bg-muted/20">
+                    <p className="text-sm font-medium">Customer link and approved rates</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Customer (rate master)</Label>
+                        <Select
+                          value={piCustomerId || "__none__"}
+                          onValueChange={(v) => setPiCustomerId(v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Optional — for approved rates" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None</SelectItem>
+                            {estimateCustomers.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {estimateCustomerLabel(c)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Rates effective date</Label>
+                        <Input
+                          type="date"
+                          value={piRatesAsOf}
+                          onChange={(e) => setPiRatesAsOf(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!piCustomerId}
+                        onClick={fillPiBuyerFromCustomer}
+                      >
+                        Fill buyer from customer
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!piCustomerId || loadingApprovedRates}
+                        onClick={loadApprovedRatesIntoEstimate}
+                      >
+                        {loadingApprovedRates && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Load line items from approved rates
+                      </Button>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Buyer address</label>
                     <Textarea
@@ -2147,6 +2311,10 @@ export default function Quotations() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="approved-rates" className="space-y-6 mt-4">
+            <CustomerApprovedRatesTab />
           </TabsContent>
         </Tabs>
       </div>

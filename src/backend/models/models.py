@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Numeric, DateTime, Boolean, Float
+from sqlalchemy import Column, Integer, String, ForeignKey, Numeric, DateTime, Boolean, Float, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..db.database import Base
@@ -211,3 +211,23 @@ class ProductPriceListItem(Base):
     product_name = Column(String, nullable=False, unique=True)
     first_price = Column(Numeric, nullable=False)
     final_price = Column(Numeric, nullable=False)
+
+
+class CustomerApprovedRate(Base):
+    """Customer-specific approved selling rates per product, with validity window (for estimates)."""
+    __tablename__ = "customer_approved_rates"
+    __table_args__ = (UniqueConstraint("customer_id", "product_id", name="uq_customer_product_approved_rate"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    approved_rate = Column(Numeric, nullable=False)
+    gst_percent = Column(Numeric, nullable=True)  # e.g. 18 for estimate line GST%
+    valid_from = Column(Date, nullable=True)  # inclusive; NULL = no lower bound
+    valid_to = Column(Date, nullable=True)  # inclusive; NULL = open-ended
+    remarks = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    customer = relationship("Customer")
+    product = relationship("Product")
