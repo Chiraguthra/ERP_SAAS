@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "retailer-webhook-verify")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")  # Optional: set to validate incoming POST signature
 WHATSAPP_GRAPH_VERSION = os.getenv("WHATSAPP_GRAPH_VERSION", "v21.0")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1073457142516082").strip()
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "EAANgOKBSTqwBRG2UoWq1dlSaklBLwVEWg5JxNbHLzmGXjaU11bgpxF5xigswnHWwNJZAeSKwF4Yg9YkUaNN2zqHyiE74Vfvn1xBZBKj3wxmrDfyDPOuC35XNVF7crBG7HtTlruKZBZB7yKgsJFNBoW6cpLQnIXZByP76E7ct0mzupV4YFyJh3zqEBY9VZCZAAZDZD").strip()
 
 GREETING_REPLY = """Thank you for reaching out to us. 🙏
 We are a one-stop destination for all your construction & project management needs — from planning to execution, we handle it all with precision and quality.
