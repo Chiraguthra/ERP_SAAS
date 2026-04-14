@@ -44,6 +44,7 @@ type SalesLeadEntry = {
   phone: string | null;
   city: string | null;
   assigned: string | null;
+  product?: string | null;
   remarks?: string | null;
 };
 
@@ -55,6 +56,7 @@ type SalesLeadForm = {
   phone: string;
   city: string;
   assigned: string;
+  product: string;
 };
 
 type ProductPriceListItem = {
@@ -101,6 +103,7 @@ export default function SalesLeads() {
       phone: "",
       city: "",
       assigned: "",
+      product: "",
     },
   });
 
@@ -191,6 +194,7 @@ export default function SalesLeads() {
         phone: data.phone || null,
         city: data.city || null,
         assigned: data.assigned || null,
+        product: data.product || null,
       };
       const r = await authFetch("/api/sales-leads", {
         method: "POST",
@@ -224,6 +228,7 @@ export default function SalesLeads() {
         phone: data.phone || null,
         city: data.city || null,
         assigned: data.assigned || null,
+        product: data.product || null,
       };
       const r = await authFetch(`/api/sales-leads/${id}`, {
         method: "PATCH",
@@ -266,6 +271,7 @@ export default function SalesLeads() {
       phone: row.phone ?? "",
       city: row.city ?? "",
       assigned: row.assigned ?? "",
+      product: row.product ?? "",
     });
     setIsDialogOpen(true);
   };
@@ -311,13 +317,18 @@ export default function SalesLeads() {
       if (!r.ok) throw new Error("Failed to fetch");
       const j = await r.json();
       const rows = (j as { sales_leads?: SalesLeadEntry[] }).sales_leads ?? [];
-      const headers = ["Id", "Customer", "Company", "Designation", "Status", "Phone", "City", "Assigned"];
+      const headers = ["Id", "Customer", "Company", "Product", "Designation", "Status", "Phone", "City", "Assigned"];
       const escape = (v: string | number | null | undefined) => {
         const s = String(v ?? "");
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
-      const lines = [headers.join(","), ...rows.map((row) => [row.id, row.customer, row.company, row.designation, row.status, row.phone, row.city, row.assigned].map(escape).join(","))];
+      const lines = [
+        headers.join(","),
+        ...rows.map((row) =>
+          [row.id, row.customer, row.company, row.product, row.designation, row.status, row.phone, row.city, row.assigned].map(escape).join(","),
+        ),
+      ];
       const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -377,6 +388,10 @@ export default function SalesLeads() {
                   <div className="space-y-2">
                     <Label>Company</Label>
                     <Input {...form.register("company")} placeholder="Company" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Product</Label>
+                    <Input {...form.register("product")} placeholder="Product" />
                   </div>
                   <div className="space-y-2">
                     <Label>Designation</Label>
@@ -619,6 +634,7 @@ export default function SalesLeads() {
                         <TableHead>Id</TableHead>
                         <TableHead>Customer</TableHead>
                         <TableHead>Company</TableHead>
+                        <TableHead>Product</TableHead>
                         <TableHead>Designation</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Phone</TableHead>
@@ -633,6 +649,7 @@ export default function SalesLeads() {
                           <TableCell className="font-mono text-muted-foreground">{row.id}</TableCell>
                           <TableCell>{row.customer ?? "—"}</TableCell>
                           <TableCell>{row.company ?? "—"}</TableCell>
+                          <TableCell>{row.product ?? "—"}</TableCell>
                           <TableCell>{row.designation ?? "—"}</TableCell>
                           <TableCell>{row.status ?? "—"}</TableCell>
                           <TableCell>{row.phone ?? "—"}</TableCell>
@@ -664,7 +681,7 @@ export default function SalesLeads() {
                       ))}
                       {leads.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                             No leads yet. Add a lead to get started.
                           </TableCell>
                         </TableRow>

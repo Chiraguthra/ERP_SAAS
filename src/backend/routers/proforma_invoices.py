@@ -229,9 +229,16 @@ def _int_to_words_in(n: int) -> str:
 
 
 def _amount_in_words_inr(total: Decimal) -> str:
-    rupees = int(total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    paise = int((total - Decimal(rupees)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) * 100)
-    words = _int_to_words_in(abs(rupees)).title() + " Rupees"
+    """Rupees + paise from amount quantized to 2 decimals (do not round rupees to nearest integer)."""
+    q = total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    negative = q < 0
+    q_abs = abs(q)
+    # Whole number of paise (e.g. 130.98 -> 13098 ->130 rupees, 98 paise)
+    total_paise = int((q_abs * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    rupees = total_paise // 100
+    paise = total_paise % 100
+    prefix = "Minus " if negative else ""
+    words = prefix + _int_to_words_in(rupees).title() + " Rupees"
     if paise:
         words += f" and {_int_to_words_in(paise).title()} Paise"
     words += " only"
@@ -545,6 +552,7 @@ def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str,
 
     qr_path = _resolve_upi_qr_path()
     bank = _bank_template_dict(bank_text, qr_path)
+    remarks_text = (p.remarks or "").strip()
 
     return {
         "company": _company_block(p),
@@ -558,6 +566,7 @@ def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str,
         "tax_rows": tax_rows,
         "tax_totals": tax_totals,
         "totals": totals,
+        "remarks": remarks_text,
         "terms": terms,
         "bank": bank,
     }

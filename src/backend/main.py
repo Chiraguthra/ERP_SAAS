@@ -292,6 +292,15 @@ try:
 except Exception:
     pass  # Column already exists
 
+# Add sales_leads.product (CRM lead line of interest)
+try:
+    with engine.connect() as conn:
+        col_type = "TEXT" if is_sqlite else "VARCHAR"
+        conn.execute(text(f"ALTER TABLE sales_leads ADD COLUMN product {col_type}"))
+        conn.commit()
+except Exception:
+    pass  # Column already exists
+
 # Add dispatch marker column on order items
 try:
     with engine.connect() as conn:
