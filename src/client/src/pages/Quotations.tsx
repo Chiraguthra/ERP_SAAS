@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/authFetch";
-import { Loader2, FileText, Settings2, Download, Edit, X, MessageCircle } from "lucide-react";
+import { Loader2, FileText, Settings2, Download, Edit, X, MessageCircle, Save } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DataTablePagination } from "@/components/DataTablePagination";
@@ -329,7 +329,7 @@ export default function Quotations() {
   });
 
   const createQuotationMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { downloadPdf: boolean }) => {
       const payload = {
         buyer_name: buyerName,
         buyer_address: buyerAddress,
@@ -352,10 +352,19 @@ export default function Quotations() {
         const e = await r.json().catch(() => ({}));
         throw new Error((e as { detail?: string }).detail ?? "Failed to save quotation");
       }
-      return (await r.json()) as { id: number };
+      const data = (await r.json()) as { id: number };
+      return { id: data.id, downloadPdf: vars.downloadPdf };
     },
     onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotation-letters"] });
+      setEditingQuotationId(res.id);
+      if (!res.downloadPdf) {
+        toast({
+          title: "Saved",
+          description: "Quotation saved. Download the PDF anytime from the list below.",
+        });
+        return;
+      }
       try {
         const r = await authFetch(`/api/quotation-letters/${res.id}/pdf`);
         if (!r.ok) throw new Error("Failed to download PDF");
@@ -381,7 +390,7 @@ export default function Quotations() {
   });
 
   const updateQuotationMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { downloadPdf: boolean }) => {
       if (!editingQuotationId) throw new Error("No quotation selected for update");
       const payload = {
         buyer_name: buyerName,
@@ -405,12 +414,20 @@ export default function Quotations() {
         const e = await r.json().catch(() => ({}));
         throw new Error((e as { detail?: string }).detail ?? "Failed to update quotation");
       }
-      return (await r.json()) as { id: number };
+      const data = (await r.json()) as { id: number };
+      return { id: data.id, downloadPdf: vars.downloadPdf };
     },
     onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotation-letters"] });
+      if (!res.downloadPdf) {
+        toast({
+          title: "Saved",
+          description: "Quotation updated. Download the PDF anytime from the list below.",
+        });
+        return;
+      }
       setEditingQuotationId(null);
       setShowPreview(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/quotation-letters"] });
       try {
         const r = await authFetch(`/api/quotation-letters/${res.id}/pdf`);
         if (!r.ok) throw new Error("Failed to download PDF");
@@ -446,7 +463,7 @@ export default function Quotations() {
   });
 
   const createProformaMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { downloadPdf: boolean }) => {
       const payload = {
         buyer_name: piBuyerName,
         buyer_address: piBuyerAddress,
@@ -472,10 +489,19 @@ export default function Quotations() {
         const e = await r.json().catch(() => ({}));
         throw new Error((e as { detail?: string }).detail ?? "Failed to save estimate");
       }
-      return (await r.json()) as { id: number };
+      const data = (await r.json()) as { id: number };
+      return { id: data.id, downloadPdf: vars.downloadPdf };
     },
     onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      setEditingProformaId(res.id);
+      if (!res.downloadPdf) {
+        toast({
+          title: "Saved",
+          description: "Estimate saved. Download the PDF anytime from the list below.",
+        });
+        return;
+      }
       try {
         const r = await authFetch(`/api/proforma-invoices/${res.id}/pdf`);
         if (!r.ok) throw new Error("Failed to download PDF");
@@ -501,7 +527,7 @@ export default function Quotations() {
   });
 
   const updateProformaMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { downloadPdf: boolean }) => {
       if (!editingProformaId) throw new Error("No estimate selected for update");
       const payload = {
         buyer_name: piBuyerName,
@@ -528,12 +554,20 @@ export default function Quotations() {
         const e = await r.json().catch(() => ({}));
         throw new Error((e as { detail?: string }).detail ?? "Failed to update estimate");
       }
-      return (await r.json()) as { id: number };
+      const data = (await r.json()) as { id: number };
+      return { id: data.id, downloadPdf: vars.downloadPdf };
     },
     onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      if (!res.downloadPdf) {
+        toast({
+          title: "Saved",
+          description: "Estimate updated. Download the PDF anytime from the list below.",
+        });
+        return;
+      }
       setEditingProformaId(null);
       setShowPiPreview(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
       try {
         const r = await authFetch(`/api/proforma-invoices/${res.id}/pdf`);
         if (!r.ok) throw new Error("Failed to download PDF");
@@ -1499,19 +1533,44 @@ export default function Quotations() {
                 </Button>
                 <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => {
                     if (editingQuotationId) {
-                      updateQuotationMutation.mutate();
+                      updateQuotationMutation.mutate({ downloadPdf: false });
                     } else {
-                      createQuotationMutation.mutate();
+                      createQuotationMutation.mutate({ downloadPdf: false });
                     }
                   }}
                   disabled={createQuotationMutation.isPending || updateQuotationMutation.isPending}
                 >
-                  {(editingQuotationId ? updateQuotationMutation.isPending : createQuotationMutation.isPending) && (
+                  {((createQuotationMutation.isPending &&
+                    createQuotationMutation.variables?.downloadPdf === false) ||
+                    (updateQuotationMutation.isPending &&
+                      updateQuotationMutation.variables?.downloadPdf === false)) && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  {editingQuotationId ? "Update & Download PDF" : "Save & Download PDF"}
+                  <Save className="w-4 h-4 mr-2" />
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (editingQuotationId) {
+                      updateQuotationMutation.mutate({ downloadPdf: true });
+                    } else {
+                      createQuotationMutation.mutate({ downloadPdf: true });
+                    }
+                  }}
+                  disabled={createQuotationMutation.isPending || updateQuotationMutation.isPending}
+                >
+                  {((createQuotationMutation.isPending &&
+                    createQuotationMutation.variables?.downloadPdf === true) ||
+                    (updateQuotationMutation.isPending &&
+                      updateQuotationMutation.variables?.downloadPdf === true)) && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  <Download className="w-4 h-4 mr-2" />
+                  Save &amp; Download PDF
                 </Button>
                 {editingQuotationId && (
                   <Button type="button" variant="outline" onClick={resetQuotationForm}>
@@ -2060,19 +2119,44 @@ export default function Quotations() {
                     </Button>
                     <Button
                       type="button"
+                      variant="secondary"
                       onClick={() => {
                         if (editingProformaId) {
-                          updateProformaMutation.mutate();
+                          updateProformaMutation.mutate({ downloadPdf: false });
                         } else {
-                          createProformaMutation.mutate();
+                          createProformaMutation.mutate({ downloadPdf: false });
                         }
                       }}
                       disabled={createProformaMutation.isPending || updateProformaMutation.isPending}
                     >
-                      {(editingProformaId ? updateProformaMutation.isPending : createProformaMutation.isPending) && (
+                      {((createProformaMutation.isPending &&
+                        createProformaMutation.variables?.downloadPdf === false) ||
+                        (updateProformaMutation.isPending &&
+                          updateProformaMutation.variables?.downloadPdf === false)) && (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       )}
-                      {editingProformaId ? "Update & Download PDF" : "Save & Download PDF"}
+                      <Save className="w-4 h-4 mr-2" />
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (editingProformaId) {
+                          updateProformaMutation.mutate({ downloadPdf: true });
+                        } else {
+                          createProformaMutation.mutate({ downloadPdf: true });
+                        }
+                      }}
+                      disabled={createProformaMutation.isPending || updateProformaMutation.isPending}
+                    >
+                      {((createProformaMutation.isPending &&
+                        createProformaMutation.variables?.downloadPdf === true) ||
+                        (updateProformaMutation.isPending &&
+                          updateProformaMutation.variables?.downloadPdf === true)) && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      <Download className="w-4 h-4 mr-2" />
+                      Save &amp; Download PDF
                     </Button>
                     {editingProformaId && (
                       <Button type="button" variant="outline" onClick={resetEstimateForm}>
