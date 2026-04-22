@@ -353,9 +353,8 @@ def _estimate_aggregate(p: models.ProformaInvoice) -> dict[str, Any]:
     }
 
 
-def _merged_bank_text(p: models.ProformaInvoice, db: Session) -> str:
-    d = _get_or_create_estimate_defaults(db)
-    return ((p.bank_details or "").strip() or (d.bank_details or "")).strip()
+def _merged_bank_text(p: models.ProformaInvoice) -> str:
+    return ((p.bank_details or "").strip())
 
 
 def _amount_fmt(d: Decimal) -> str:
@@ -376,14 +375,14 @@ def _strip_term_number_prefix(line: str) -> str:
 
 
 def _terms_list_for_template(text: str) -> list[str]:
-    raw = (text or "").strip() or "This is a quotation/estimate only and not a tax invoice."
+    raw = (text or "").strip()
+    if not raw:
+        return []
     out: list[str] = []
     for ln in raw.splitlines():
         t = _strip_term_number_prefix(ln.strip())
         if t:
             out.append(t)
-    if not out:
-        return ["This is a quotation/estimate only and not a tax invoice."]
     return out
 
 
@@ -494,9 +493,9 @@ def _bank_template_dict(bank_text: str, qr_path: Path | None) -> dict[str, Any]:
     return out
 
 
-def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str, Any]:
+def _estimate_print_context(p: models.ProformaInvoice) -> dict[str, Any]:
     agg = _estimate_aggregate(p)
-    bank_text = _merged_bank_text(p, db)
+    bank_text = _merged_bank_text(p)
     today = date.today()
     pos = (p.place_of_supply or "").strip()
 
@@ -535,9 +534,7 @@ def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str,
         "total": f"{agg['total_gst']:,.2f}",
     }
 
-    terms_raw = (p.terms_and_conditions or "").strip() or (
-        "This is a quotation/estimate only and not a tax invoice."
-    )
+    terms_raw = (p.terms_and_conditions or "").strip()
     terms = _terms_list_for_template(terms_raw)
 
     total_amt = agg["total_amt"]
@@ -572,9 +569,9 @@ def _estimate_print_context(p: models.ProformaInvoice, db: Session) -> dict[str,
     }
 
 
-def _render_estimate_html(p: models.ProformaInvoice, db: Session) -> str:
+def _render_estimate_html(p: models.ProformaInvoice) -> str:
     tpl = _JINJA_ENV.get_template("estimate_print.html")
-    return tpl.render(**_estimate_print_context(p, db))
+    return tpl.render(**_estimate_print_context(p))
 
 
 def _html_to_pdf(html: str) -> bytes:
@@ -594,8 +591,8 @@ def _html_to_pdf(html: str) -> bytes:
     return pdf_bytes
 
 
-def _render_pi_pdf(p: models.ProformaInvoice, db: Session) -> bytes:
-    return _html_to_pdf(_render_estimate_html(p, db))
+def _render_pi_pdf(p: models.ProformaInvoice) -> bytes:
+    return _html_to_pdf(_render_estimate_html(p))
 
 
 def _pick_estimate(body: dict, defaults: models.EstimateDefaults, field: str) -> str:
@@ -758,9 +755,14 @@ def update_proforma_invoice(
         "seller_company",
         "seller_phone",
     ]:
-        if field in body:
-            val = (body.get(field) or "").strip()
-            setattr(p, field, val or None)
+        if field not in body:
+            continue
+        raw = body[field]
+        if raw is None:
+            setattr(p, field, None)
+            continue
+        s = raw.strip() if isinstance(raw, str) else str(raw).strip()
+        setattr(p, field, s or None)
 
     db.commit()
     db.refresh(p)
@@ -776,7 +778,7 @@ def download_proforma_invoice_pdf(
     p = db.query(models.ProformaInvoice).filter(models.ProformaInvoice.id == invoice_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Estimate not found")
-    pdf_bytes = _render_pi_pdf(p, db)
+    pdf_bytes = _render_pi_pdf(p)
     filename = f"Estimate-{invoice_id:03d}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
@@ -794,4 +796,4 @@ def proforma_invoice_print_html(
     p = db.query(models.ProformaInvoice).filter(models.ProformaInvoice.id == invoice_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Estimate not found")
-    return HTMLResponse(content=_render_estimate_html(p, db), media_type="text/html; charset=utf-8")
+    return HTMLResponse(content=_render_estimate_html(p), media_type="text/html; charset=utf-8")

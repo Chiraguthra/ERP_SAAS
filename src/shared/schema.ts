@@ -76,6 +76,7 @@ export const orders = pgTable("orders", {
   termsOfDelivery: text("terms_of_delivery"),
   contactNumber: text("contact_number"),
   assignedTo: text("assigned_to"),
+  remarks: text("remarks"),
 });
 
 export const orderItems = pgTable("order_items", {
@@ -153,4 +154,5 @@ export type CreateOrderRequest = {
   termsOfDelivery?: string | null;
   contactNumber?: string | null;
   assignedTo?: string | null;
+  remarks?: string | null;
 };

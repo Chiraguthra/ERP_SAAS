@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { getStatusLabel } from "@/lib/orderStatus";
 import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Search, Loader2, Minus, Edit, Trash2, ChevronDown, Eye } from "lucide-react";
+import { Plus, Search, Loader2, Minus, Edit, Trash2, ChevronDown, Eye, MessageSquareText } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +61,9 @@ export default function Orders() {
   const [destination, setDestination] = useState<string>("");
   const [termsOfDelivery, setTermsOfDelivery] = useState<string>("");
   const [assignedTo, setAssignedTo] = useState<string>("");
+  const [remarks, setRemarks] = useState<string>("");
+  const [remarksOrderId, setRemarksOrderId] = useState<number | null>(null);
+  const [remarksDraft, setRemarksDraft] = useState<string>("");
   const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number; price?: number }[]>([{ productId: "", quantity: 1 }]);
 
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function Orders() {
     }
   }, [isCreateOpen, user]);
 
-  const { orders, total, isLoading, createOrder, isCreating, deleteOrder, isDeleting } = useOrders({
+  const { orders, total, isLoading, createOrder, isCreating, deleteOrder, isDeleting, updateOrder, isUpdating } = useOrders({
     q: search,
     status: statusFilter === "all" ? null : statusFilter,
     page,
@@ -199,6 +203,7 @@ export default function Orders() {
       destination: destination.trim() || undefined,
       termsOfDelivery: termsOfDelivery.trim() || undefined,
       assignedTo: assignedTo.trim() || undefined,
+      remarks: remarks.trim() || undefined,
       freightCharges: freight || undefined,
       adjustments: adjust || undefined,
       cgstPercent: cgstPct || undefined,
@@ -222,6 +227,7 @@ export default function Orders() {
         setDestination("");
         setTermsOfDelivery("");
         setAssignedTo((user?.name || user?.username || "").trim());
+        setRemarks("");
         setFreightCharges("");
         setAdjustments("");
         setCgstPercent("");
@@ -337,6 +343,16 @@ export default function Orders() {
                     className="w-full max-w-md"
                   />
                   <p className="text-xs text-muted-foreground">Defaults to your name; you can change it before saving.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Remarks</label>
+                  <Textarea
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Internal notes (optional)"
+                    rows={3}
+                    className="resize-y min-h-[72px]"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 border-t pt-4">
@@ -595,13 +611,14 @@ export default function Orders() {
                     <TableHead>Total</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Assigned to</TableHead>
+                    <TableHead className="min-w-[120px] max-w-[200px]">Remarks</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {orders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                         No orders found
                       </TableCell>
                     </TableRow>
@@ -619,6 +636,26 @@ export default function Orders() {
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm max-w-[140px] truncate" title={(order as { assignedTo?: string | null }).assignedTo ?? ""}>
                           {(order as { assignedTo?: string | null }).assignedTo?.trim() || "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <p className="text-sm text-muted-foreground truncate flex-1 min-w-0" title={(order as { remarks?: string | null }).remarks ?? ""}>
+                              {(order as { remarks?: string | null }).remarks?.trim() || "—"}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              title="Edit remarks"
+                              onClick={() => {
+                                setRemarksOrderId(order.id);
+                                setRemarksDraft((order as { remarks?: string | null }).remarks ?? "");
+                              }}
+                            >
+                              <MessageSquareText className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right space-x-2">
                           {(order.status || "").toString().toLowerCase() === "pending" ? (
@@ -696,6 +733,63 @@ export default function Orders() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog
+          open={remarksOrderId != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRemarksOrderId(null);
+              setRemarksDraft("");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Order remarks {remarksOrderId != null ? `#${remarksOrderId}` : ""}</DialogTitle>
+            </DialogHeader>
+            <Textarea
+              value={remarksDraft}
+              onChange={(e) => setRemarksDraft(e.target.value)}
+              placeholder="Internal notes"
+              rows={5}
+              className="resize-y min-h-[120px]"
+            />
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRemarksOrderId(null);
+                  setRemarksDraft("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isUpdating || remarksOrderId == null}
+                onClick={() => {
+                  if (remarksOrderId == null) return;
+                  updateOrder(
+                    { id: remarksOrderId, remarks: remarksDraft.trim() || null },
+                    {
+                      onSuccess: () => {
+                        setRemarksOrderId(null);
+                        setRemarksDraft("");
+                        toast({ title: "Saved", description: "Remarks updated" });
+                      },
+                      onError: (err) =>
+                        toast({ title: "Error", description: err.message, variant: "destructive" }),
+                    }
+                  );
+                }}
+              >
+                {isUpdating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={isItemsDialogOpen}

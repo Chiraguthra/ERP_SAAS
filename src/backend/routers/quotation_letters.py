@@ -124,6 +124,219 @@ def _image_reader(path: Path) -> ImageReader | None:
         return ImageReader(BytesIO(file_obj.read()))
 
 
+def _quotation_bottom_margin_y(page_height: float, footer_reserve: float) -> float:
+    """Content must stay above this y (points from bottom)."""
+    return max(footer_reserve + 52, 72.0)
+
+
+def _quotation_draw_page_footer(
+    c: canvas.Canvas,
+    width: float,
+    bottom_reader: Optional[ImageReader],
+    footer_height: float,
+) -> None:
+    if bottom_reader and footer_height > 0:
+        draw_w = width - 14
+        c.drawImage(bottom_reader, 7, 7, width=draw_w, height=footer_height, mask="auto")
+
+
+def _quotation_draw_page_header(
+    c: canvas.Canvas,
+    width: float,
+    height: float,
+    top_reader: Optional[ImageReader],
+    font_regular: str,
+    font_bold: str,
+    body_font: int,
+    line_height: float,
+    x_left: float,
+    x_right: float,
+    ref_line: str,
+    dated_line: str,
+) -> float:
+    """Draw letterhead + Ref/Dated + QUOTATION; return y for body content below."""
+    y = height
+    if top_reader:
+        top_w, top_h = top_reader.getSize()
+        draw_w = width - 14
+        draw_h = draw_w * (top_h / top_w)
+        c.drawImage(top_reader, 7, y - draw_h, width=draw_w, height=draw_h, mask="auto")
+        y = y - draw_h - 20
+    c.setFont(font_regular, body_font)
+    c.drawString(x_left, y, ref_line)
+    c.drawRightString(x_right, y, dated_line)
+    y -= line_height * 1.5
+    c.setFont(font_bold, 15)
+    c.drawCentredString(width / 2, y, "QUOTATION")
+    y -= line_height * 1.2
+    return y
+
+
+def _quotation_new_content_page(
+    c: canvas.Canvas,
+    width: float,
+    height: float,
+    top_reader: Optional[ImageReader],
+    bottom_reader: Optional[ImageReader],
+    footer_height: float,
+    font_regular: str,
+    font_bold: str,
+    body_font: int,
+    line_height: float,
+    x_left: float,
+    x_right: float,
+    ref_line: str,
+    dated_line: str,
+) -> float:
+    """Footer on current page, new page, repeat header; return y for continued body."""
+    _quotation_draw_page_footer(c, width, bottom_reader, footer_height)
+    c.showPage()
+    return _quotation_draw_page_header(
+        c,
+        width,
+        height,
+        top_reader,
+        font_regular,
+        font_bold,
+        body_font,
+        line_height,
+        x_left,
+        x_right,
+        ref_line,
+        dated_line,
+    )
+
+
+def _quotation_ensure_space(
+    c: canvas.Canvas,
+    y: float,
+    page_height: float,
+    bottom_y: float,
+    step: float,
+    *,
+    width: float,
+    top_reader: Optional[ImageReader],
+    bottom_reader: Optional[ImageReader],
+    footer_height: float,
+    font_regular: str,
+    font_bold: str,
+    body_font: int,
+    line_height: float,
+    x_left: float,
+    x_right: float,
+    ref_line: str,
+    dated_line: str,
+) -> float:
+    """Start a new page (with footer+header) if the next line would fall below bottom_y."""
+    if y - step < bottom_y:
+        return _quotation_new_content_page(
+            c,
+            width,
+            page_height,
+            top_reader,
+            bottom_reader,
+            footer_height,
+            font_regular,
+            font_bold,
+            body_font,
+            line_height,
+            x_left,
+            x_right,
+            ref_line,
+            dated_line,
+        )
+    return y
+
+
+def _quotation_draw_flowing_table(
+    c: canvas.Canvas,
+    table: Table,
+    x_left: float,
+    y_start: float,
+    table_width: float,
+    page_height: float,
+    bottom_y: float,
+    *,
+    width: float,
+    top_reader: Optional[ImageReader],
+    bottom_reader: Optional[ImageReader],
+    footer_height: float,
+    font_regular: str,
+    font_bold: str,
+    body_font: int,
+    line_height: float,
+    x_right: float,
+    ref_line: str,
+    dated_line: str,
+) -> float:
+    """Draw a ReportLab Table across pages; return final y below the table."""
+    y = y_start
+    remaining: Table | None = table
+    guard = 0
+    while remaining is not None and guard < 500:
+        guard += 1
+        avail = y - bottom_y
+        if avail < 80:
+            y = _quotation_new_content_page(
+                c,
+                width,
+                page_height,
+                top_reader,
+                bottom_reader,
+                footer_height,
+                font_regular,
+                font_bold,
+                body_font,
+                line_height,
+                x_left,
+                x_right,
+                ref_line,
+                dated_line,
+            )
+            avail = y - bottom_y
+        _, th_need = remaining.wrapOn(c, table_width, 10**6)
+        if th_need <= avail:
+            remaining.drawOn(c, x_left, y - th_need)
+            return y - th_need - 20
+        parts = remaining.split(table_width, avail)
+        if parts:
+            chunk = parts[0]
+            _, ch = chunk.wrapOn(c, table_width, avail)
+            chunk.drawOn(c, x_left, y - ch)
+            y -= ch + 14
+            remaining = parts[1] if len(parts) > 1 else None
+            continue
+        y = _quotation_new_content_page(
+            c,
+            width,
+            page_height,
+            top_reader,
+            bottom_reader,
+            footer_height,
+            font_regular,
+            font_bold,
+            body_font,
+            line_height,
+            x_left,
+            x_right,
+            ref_line,
+            dated_line,
+        )
+        avail = y - bottom_y
+        parts = remaining.split(table_width, avail)
+        if parts:
+            chunk = parts[0]
+            _, ch = chunk.wrapOn(c, table_width, avail)
+            chunk.drawOn(c, x_left, y - ch)
+            y -= ch + 14
+            remaining = parts[1] if len(parts) > 1 else None
+        else:
+            _, ch = remaining.wrapOn(c, table_width, avail)
+            remaining.drawOn(c, x_left, y - min(ch, avail))
+            return y - min(ch, avail) - 20
+    return y
+
+
 def _get_or_create_defaults(db: Session) -> models.QuotationLetterDefaults:
     defaults = db.query(models.QuotationLetterDefaults).first()
     if defaults:
@@ -303,6 +516,7 @@ def update_quotation_letter(
     if not q:
         raise HTTPException(status_code=404, detail="Quotation not found")
 
+    # Only keys present in body are updated. JSON null or "" clears the column; omitted keys are left unchanged.
     for field in [
         "buyer_name",
         "buyer_address",
@@ -316,9 +530,14 @@ def update_quotation_letter(
         "seller_company",
         "seller_phone",
     ]:
-        if field in body:
-            val = (body.get(field) or "").strip()
-            setattr(q, field, val or None)
+        if field not in body:
+            continue
+        raw = body[field]
+        if raw is None:
+            setattr(q, field, None)
+            continue
+        s = raw.strip() if isinstance(raw, str) else str(raw).strip()
+        setattr(q, field, s or None)
 
     db.commit()
     db.refresh(q)
@@ -337,43 +556,63 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     line_height = 17
     font_regular, font_bold = _resolve_pdf_fonts()
 
-    # Header image from provided asset (flush to top)
-    y = height
-    footer_height = 0
+    footer_height = 0.0
     top_reader = _image_reader(TOP_IMAGE_PATH)
-    if top_reader:
-        top_w, top_h = top_reader.getSize()
-        draw_w = width - 14
-        draw_h = draw_w * (top_h / top_w)
-        c.drawImage(top_reader, 7, y - draw_h, width=draw_w, height=draw_h, mask="auto")
-        y = y - draw_h - 20
-
     bottom_reader = _image_reader(BOTTOM_IMAGE_PATH)
     if bottom_reader:
         bottom_w, bottom_h = bottom_reader.getSize()
         footer_draw_w = width - 14
         footer_height = footer_draw_w * (bottom_h / bottom_w)
 
-    # ── REF (left) and DATED (right) ──
     today = date.today()
     fy_year = today.year
     fy = f"{fy_year}-{(fy_year + 1) % 100:02d}"
     ref_no = f"{q.id:03d}"
+    ref_line = f"Ref: SLTMS/ {fy}/ {ref_no}"
+    dated_line = f"Dated: {today.strftime('%d-%m-%Y')}"
 
-    c.setFont(font_regular, body_font)
-    c.drawString(x_left, y, f"Ref: SLTMS/ {fy}/ {ref_no}")
-    c.drawRightString(x_right, y, f"Dated: {today.strftime('%d-%m-%Y')}")
-    y -= line_height * 1.5
+    y = _quotation_draw_page_header(
+        c,
+        width,
+        height,
+        top_reader,
+        font_regular,
+        font_bold,
+        body_font,
+        line_height,
+        x_left,
+        x_right,
+        ref_line,
+        dated_line,
+    )
 
-    # ── QUOTATION HEADING ──
-    c.setFont(font_bold, 15)
-    c.drawCentredString(width / 2, y, "QUOTATION")
-    y -= line_height * 1.2
-
-    # Text width for body copy (same as left/right margins)
     content_width = x_right - x_left
+    bottom_y = _quotation_bottom_margin_y(height, footer_height)
+    tight = line_height * 0.95
+
+    def es(y_cur: float, step: float) -> float:
+        return _quotation_ensure_space(
+            c,
+            y_cur,
+            height,
+            bottom_y,
+            step,
+            width=width,
+            top_reader=top_reader,
+            bottom_reader=bottom_reader,
+            footer_height=footer_height,
+            font_regular=font_regular,
+            font_bold=font_bold,
+            body_font=body_font,
+            line_height=line_height,
+            x_left=x_left,
+            x_right=x_right,
+            ref_line=ref_line,
+            dated_line=dated_line,
+        )
 
     # ── TO BLOCK ──
+    y = es(y, line_height)
     c.setFont(font_regular, body_font)
     c.drawString(x_left, y, "To,")
     y -= line_height
@@ -382,6 +621,8 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         name = _pdf_safe((q.buyer_name or "").strip())
         if name:
             for wrapped in simpleSplit(name, font_bold, body_font, content_width):
+                y = es(y, line_height)
+                c.setFont(font_bold, body_font)
                 c.drawString(x_left, y, wrapped)
                 y -= line_height
         c.setFont(font_regular, body_font)
@@ -392,6 +633,8 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
             if not stripped:
                 continue
             for wrapped in simpleSplit(_pdf_safe(stripped), font_regular, body_font, content_width):
+                y = es(y, line_height)
+                c.setFont(font_regular, body_font)
                 c.drawString(x_left, y, wrapped)
                 y -= line_height
 
@@ -401,20 +644,25 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         c.setFont(font_bold, body_font)
         subj = _pdf_safe(f"Sub: {q.subject}".strip())
         for wrapped in simpleSplit(subj, font_bold, body_font, content_width):
+            y = es(y, line_height)
+            c.setFont(font_bold, body_font)
             c.drawString(x_left, y, wrapped)
             y -= line_height
         c.setFont(font_regular, body_font)
         y -= line_height * 0.4
 
+    y = es(y, line_height)
+    c.setFont(font_regular, body_font)
     c.drawString(x_left, y, "Dear Sir,")
     y -= line_height
-    c.drawString(
-        x_left, y,
-        "As per telephonic conversation, please find below rates for items discussed \u2013",
-    )
-    y -= line_height * 1.15
+    intro = "As per telephonic conversation, please find below rates for items discussed \u2013"
+    for wrapped in simpleSplit(intro, font_regular, body_font, content_width):
+        y = es(y, line_height)
+        c.drawString(x_left, y, wrapped)
+        y -= line_height * 1.05
+    y -= line_height * 0.1
 
-    # ── PRODUCT DETAILS TABLE ──
+    # ── PRODUCT DETAILS TABLE (may span pages) ──
     product_rows = _parse_product_rows(q.product_details or "")
     table = Table(product_rows, colWidths=[55, 240, 70, 105], repeatRows=1)
     table.setStyle(
@@ -433,83 +681,111 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
             ]
         )
     )
-    available_height = max(120, y - (footer_height + 80))
-    _, table_h = table.wrapOn(c, width - 100, available_height)
-    table.drawOn(c, x_left, y - table_h)
-    y = y - table_h - 20
+    y = _quotation_draw_flowing_table(
+        c,
+        table,
+        x_left,
+        y,
+        width - 100,
+        height,
+        bottom_y,
+        width=width,
+        top_reader=top_reader,
+        bottom_reader=bottom_reader,
+        footer_height=footer_height,
+        font_regular=font_regular,
+        font_bold=font_bold,
+        body_font=body_font,
+        line_height=line_height,
+        x_right=x_right,
+        ref_line=ref_line,
+        dated_line=dated_line,
+    )
 
     # ── REMARKS ──
     if q.remarks:
+        y = es(y, line_height)
         c.setFont(font_bold, body_font)
         c.drawString(x_left, y, "Remarks \u2013")
-        c.setFont(font_regular, body_font)
         y -= line_height
+        c.setFont(font_regular, body_font)
         for line in q.remarks.splitlines():
             if line.strip():
                 wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 110)
                 for wrapped_line in wrapped_lines:
+                    y = es(y, tight)
+                    c.setFont(font_regular, body_font)
                     c.drawString(x_left, y, wrapped_line)
-                    y -= line_height * 0.95
+                    y -= tight
         y -= line_height * 0.6
 
     # ── TERMS AND CONDITIONS ──
+    y = es(y, line_height)
     c.setFont(font_bold, body_font)
     c.drawString(x_left, y, "Terms and Conditions \u2013")
-    c.setFont(font_regular, body_font)
     y -= line_height
+    c.setFont(font_regular, body_font)
     if q.terms_and_conditions:
         for line in q.terms_and_conditions.splitlines():
             if line.strip():
                 wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 110)
                 for wrapped_line in wrapped_lines:
+                    y = es(y, tight)
+                    c.setFont(font_regular, body_font)
                     c.drawString(x_left, y, wrapped_line)
-                    y -= line_height * 0.95
+                    y -= tight
 
     y -= line_height * 1.2
-    c.drawString(x_left, y, "For any clarification or order confirmation, please feel free to contact us.")
-    y -= line_height * 1.3
+    closing = "For any clarification or order confirmation, please feel free to contact us."
+    for wrapped in simpleSplit(closing, font_regular, body_font, content_width):
+        y = es(y, line_height)
+        c.setFont(font_regular, body_font)
+        c.drawString(x_left, y, wrapped)
+        y -= line_height * 1.15
+    y = es(y, line_height)
     c.drawString(x_left, y, "Thanks and Regards")
     y -= line_height * 1.4
 
     # ── SELLER DETAILS (bold) ──
     c.setFont(font_bold, body_font)
     if q.seller_name:
+        y = es(y, line_height)
         c.drawString(x_left, y, q.seller_name)
         y -= line_height
     if q.seller_designation:
+        y = es(y, line_height)
         c.drawString(x_left, y, q.seller_designation)
         y -= line_height
     if q.seller_company:
-        c.drawString(x_left, y, q.seller_company)
-        y -= line_height
+        for wrapped in simpleSplit(_pdf_safe(q.seller_company), font_bold, body_font, content_width):
+            y = es(y, line_height)
+            c.setFont(font_bold, body_font)
+            c.drawString(x_left, y, wrapped)
+            y -= line_height
     if q.seller_phone:
         c.setFont(font_regular, body_font)
+        y = es(y, line_height)
         c.drawString(x_left, y, q.seller_phone)
         y -= line_height
 
-    # ── BANK DETAILS BOX ──
+    # ── BANK DETAILS (flowing; no fixed-height box so long details are not clipped) ──
     if q.bank_details:
         y -= line_height * 0.6
+        y = es(y, line_height)
         c.setFont(font_bold, body_font)
         c.drawString(x_left, y, "Bank Details:")
         y -= line_height * 0.9
-        box_height = 70
-        c.rect(x_left, y - box_height + 10, width - 100, box_height, stroke=1, fill=0)
+        bank_left = x_left + 8
+        bank_w = width - 120
         c.setFont(font_regular, body_font)
-        text_y = y
         for line in q.bank_details.splitlines():
             if line.strip():
-                wrapped_lines = simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, width - 120)
-                for wrapped_line in wrapped_lines:
-                    c.drawString(x_left + 8, text_y, wrapped_line)
-                    text_y -= line_height * 0.9
+                for wrapped_line in simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, bank_w):
+                    y = es(y, tight)
+                    c.drawString(bank_left, y, wrapped_line)
+                    y -= tight
 
-    # Footer image from provided asset
-    if bottom_reader and footer_height:
-        draw_w = width - 14
-        c.drawImage(bottom_reader, 7, 7, width=draw_w, height=footer_height, mask="auto")
-
-    c.showPage()
+    _quotation_draw_page_footer(c, width, bottom_reader, footer_height)
     c.save()
     buffer.seek(0)
     return buffer.getvalue()

@@ -14,19 +14,35 @@
       font-size: 14px;
       color: #000;
       margin: 0;
-      /* Inset from printable edge — Playwright/Chromium PDF often clips/antialiases the rightmost stroke */
       padding: 0 6px 0 0;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
     th, td { font-size: 13px; }
+    /* Block layout (not one giant table) so Chromium can paginate long remarks/terms */
+    .estimate-doc {
+      width: 100%;
+    }
+    .estimate-section {
+      width: 100%;
+      padding: 0 0 4px 0;
+      page-break-inside: auto;
+      break-inside: auto;
+    }
+    .estimate-title {
+      text-align: center;
+      font-size: 30px !important;
+      font-weight: bold;
+      padding: 10px 12px;
+    }
+    .pdf-allow-break {
+      page-break-inside: auto;
+      break-inside: auto;
+    }
     tr.bank-sign-row {
       page-break-inside: avoid;
+      break-inside: avoid;
     }
-    /*
-     * 2px grid lines; slightly wider RIGHT border on closed frames so the rendered PDF
-     * matches the apparent weight of top/left/bottom (engine draws the trailing edge lighter).
-     */
     .pdf-box {
       border: 2px solid #000;
       border-right-width: 4px;
@@ -42,6 +58,18 @@
       border-collapse: collapse;
       border: 2px solid #000;
       border-right-width: 4px;
+      page-break-inside: auto;
+      break-inside: auto;
+    }
+    .estimate-line-items thead {
+      display: table-header-group;
+    }
+    .estimate-line-items tfoot {
+      display: table-footer-group;
+    }
+    .estimate-line-items tbody tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .estimate-line-items th,
     .estimate-line-items td {
@@ -62,20 +90,14 @@
   </style>
 </head>
 <body>
-<!-- WRAPPER TABLE — full page, all sections stacked -->
-<table width="100%" style="border-collapse:collapse; width:100%; border:none;">
+<div class="estimate-doc">
 
-  <!-- ROW 1: PAGE TITLE -->
-  <tr>
-    <td colspan="2" style="text-align:center; font-size:30px !important; font-weight:bold; padding:10px 12px;">
-      Estimate
-    </td>
-  </tr>
+  <div class="estimate-section">
+    <div class="estimate-title">Estimate</div>
+  </div>
 
-  <!-- ROW 2: COMPANY HEADER -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <div class="pdf-box" style="background-color:#f8f8f8;">
+  <div class="estimate-section">
+    <div class="pdf-box" style="background-color:#f8f8f8;">
       <table width="100%" style="border-collapse:collapse;">
         <tr>
           <td style="width:100px; vertical-align:middle; padding:8px 10px 4px 10px;">
@@ -110,98 +132,89 @@
           </td>
         </tr>
       </table>
-      </div>
-    </td>
-  </tr>
+    </div>
+  </div>
 
-  <!-- ROW 3: ESTIMATE FOR | ESTIMATE DETAILS -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <table width="100%" class="pdf-box-accent" style="border-collapse:collapse;">
-        <tr>
-          <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; border-right:2px solid #4a4f70; background-color:#f0f0f0;">
-            Estimate For:
-          </td>
-          <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; background-color:#f0f0f0;">
-            Estimate Details:
-          </td>
+  <div class="estimate-section">
+    <table width="100%" class="pdf-box-accent" style="border-collapse:collapse;">
+      <tr>
+        <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; border-right:2px solid #4a4f70; background-color:#f0f0f0;">
+          Estimate For:
+        </td>
+        <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; background-color:#f0f0f0;">
+          Estimate Details:
+        </td>
+      </tr>
+      <tr>
+        <td style="vertical-align:top; padding:6px 10px; border-right:2px solid #4a4f70; background-color:#fafafa;">
+          <div style="font-size:16px; font-weight:bold;">{{ client.name }}</div>
+          <div style="font-size:14px;">{{ client.address | safe }}</div>
+          <div style="font-size:14px;">{{ client.city }}{% if client.pin %}-{{ client.pin }}{% endif %}</div>
+          {% if client.country %}<div style="font-size:14px;">{{ client.country }}</div>{% endif %}
+          <div style="font-size:14px; margin-top:6px;">
+            {% if client.contact %}Contact No:&nbsp; <b>{{ client.contact }}</b>{% endif %}
+            {% if client.gstin %}&nbsp;&nbsp;&nbsp;GSTIN:&nbsp; <b>{{ client.gstin }}</b>{% endif %}
+          </div>
+          {% if client.state %}<div style="font-size:14px; margin-top:4px;">State:&nbsp; <b>{{ client.state }}</b></div>{% endif %}
+        </td>
+        <td style="vertical-align:top; padding:6px 10px; background-color:#fafafa;">
+          <div style="font-size:15px;">No:&nbsp; <b>{{ estimate.number }}</b></div>
+          <div style="font-size:15px; margin-top:4px;">Date:&nbsp; <b>{{ estimate.date }}</b></div>
+          <div style="font-size:15px; margin-top:4px;">Place Of Supply:&nbsp; <b>{{ estimate.place_of_supply or '&mdash;' }}</b></div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="estimate-section">
+    <table class="estimate-line-items" width="100%">
+      <colgroup>
+        <col style="width:5%"><col style="width:32%">
+        <col style="width:9%"><col style="width:8%"><col style="width:14%">
+        <col style="width:14%"><col style="width:18%">
+      </colgroup>
+      <thead>
+        <tr style="background-color:#f0f0f0;">
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">#</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Item name</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Quantity</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Unit</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Price/Unit(₹)</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">GST(₹)</th>
+          <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Amount(₹)</th>
         </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
         <tr>
-          <td style="vertical-align:top; padding:6px 10px; border-right:2px solid #4a4f70; background-color:#fafafa;">
-            <div style="font-size:16px; font-weight:bold;">{{ client.name }}</div>
-            <div style="font-size:14px;">{{ client.address | safe }}</div>
-            <div style="font-size:14px;">{{ client.city }}{% if client.pin %}-{{ client.pin }}{% endif %}</div>
-            {% if client.country %}<div style="font-size:14px;">{{ client.country }}</div>{% endif %}
-            <div style="font-size:14px; margin-top:6px;">
-              {% if client.contact %}Contact No:&nbsp; <b>{{ client.contact }}</b>{% endif %}
-              {% if client.gstin %}&nbsp;&nbsp;&nbsp;GSTIN:&nbsp; <b>{{ client.gstin }}</b>{% endif %}
-            </div>
-            {% if client.state %}<div style="font-size:14px; margin-top:4px;">State:&nbsp; <b>{{ client.state }}</b></div>{% endif %}
+          <td style="font-size:15px !important; padding:9px 10px; text-align:center;">{{ loop.index }}</td>
+          <td style="font-size:15px !important; padding:9px 10px;">{{ item.name }}</td>
+          <td style="font-size:15px !important; padding:9px 10px; text-align:center;">{{ item.qty }}</td>
+          <td style="font-size:15px !important; padding:9px 10px;">{{ item.unit }}</td>
+          <td style="font-size:15px !important; padding:9px 10px; text-align:right;">₹ {{ item.unit_price }}</td>
+          <td style="font-size:15px !important; padding:9px 10px; text-align:right;">
+            ₹ {{ item.gst_amount }}<br>
+            <span style="font-size:11px;">({{ item.gst_rate }}%)</span>
           </td>
-          <td style="vertical-align:top; padding:6px 10px; background-color:#fafafa;">
-            <div style="font-size:15px;">No:&nbsp; <b>{{ estimate.number }}</b></div>
-            <div style="font-size:15px; margin-top:4px;">Date:&nbsp; <b>{{ estimate.date }}</b></div>
-            <div style="font-size:15px; margin-top:4px;">Place Of Supply:&nbsp; <b>{{ estimate.place_of_supply or '&mdash;' }}</b></div>
-          </td>
+          <td style="font-size:15px !important; padding:9px 10px; text-align:right;">₹ {{ item.amount }}</td>
         </tr>
-      </table>
-    </td>
-  </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="font-weight:bold;">
+          <td colspan="2" style="font-size:15px !important; font-weight:bold; padding:9px 10px;">Total</td>
+          <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:center;">{{ totals.qty }}</td>
+          <td style="font-size:15px !important; font-weight:bold; padding:9px 10px;"></td>
+          <td style="font-size:15px !important; font-weight:bold; padding:9px 10px;"></td>
+          <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:right;">₹ {{ totals.gst }}</td>
+          <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:right;">₹ {{ totals.amount }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
 
-  <!-- ROW 4: LINE ITEMS TABLE -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <table class="estimate-line-items" width="100%">
-        <colgroup>
-          <col style="width:5%"><col style="width:32%">
-          <col style="width:9%"><col style="width:8%"><col style="width:14%">
-          <col style="width:14%"><col style="width:18%">
-        </colgroup>
-        <thead>
-          <tr style="background-color:#f0f0f0;">
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">#</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Item name</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Quantity</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Unit</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Price/Unit(₹)</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">GST(₹)</th>
-            <th style="font-size:14px !important; font-weight:bold; padding:9px 10px; white-space:nowrap;">Amount(₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in items %}
-          <tr>
-            <td style="font-size:15px !important; padding:9px 10px; text-align:center;">{{ loop.index }}</td>
-            <td style="font-size:15px !important; padding:9px 10px;">{{ item.name }}</td>
-            <td style="font-size:15px !important; padding:9px 10px; text-align:center;">{{ item.qty }}</td>
-            <td style="font-size:15px !important; padding:9px 10px;">{{ item.unit }}</td>
-            <td style="font-size:15px !important; padding:9px 10px; text-align:right;">₹ {{ item.unit_price }}</td>
-            <td style="font-size:15px !important; padding:9px 10px; text-align:right;">
-              ₹ {{ item.gst_amount }}<br>
-              <span style="font-size:11px;">({{ item.gst_rate }}%)</span>
-            </td>
-            <td style="font-size:15px !important; padding:9px 10px; text-align:right;">₹ {{ item.amount }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr style="font-weight:bold;">
-            <td colspan="2" style="font-size:15px !important; font-weight:bold; padding:9px 10px;">Total</td>
-            <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:center;">{{ totals.qty }}</td>
-            <td style="font-size:15px !important; font-weight:bold; padding:9px 10px;"></td>
-            <td style="font-size:15px !important; font-weight:bold; padding:9px 10px;"></td>
-            <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:right;">₹ {{ totals.gst }}</td>
-            <td style="font-size:15px !important; font-weight:bold; padding:9px 10px; text-align:right;">₹ {{ totals.amount }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </td>
-  </tr>
-
-  <!-- ROW 5: TAX SUMMARY + TOTALS SIDE BY SIDE -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <div class="pdf-box">
+  <div class="estimate-section">
+    <div class="pdf-box">
       <table width="100%" style="border-collapse:collapse;">
         <tr>
           <td style="width:62%; vertical-align:top; padding:8px; border-right:2px solid #000;">
@@ -254,77 +267,66 @@
           </td>
         </tr>
       </table>
-      </div>
-    </td>
-   </tr>
+    </div>
+  </div>
 
   {% if remarks %}
-  <!-- REMARKS (before terms) -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <div class="pdf-box" style="padding:10px 12px;">
-        <div style="font-size:15px; font-weight:bold; margin-bottom:6px;">Remarks</div>
-        <div style="font-size:15px; line-height:1.65; white-space: pre-wrap;">{{ remarks }}</div>
-      </div>
-    </td>
-  </tr>
+  <div class="estimate-section pdf-allow-break">
+    <div class="pdf-box" style="padding:10px 12px;">
+      <div style="font-size:15px; font-weight:bold; margin-bottom:6px;">Remarks</div>
+      <div style="font-size:15px; line-height:1.65; white-space: pre-wrap;">{{ remarks }}</div>
+    </div>
+  </div>
   {% endif %}
 
-  <!-- ROW 6: TERMS & CONDITIONS -->
-  <tr>
-    <td colspan="2" style="padding:0 0 4px 0;">
-      <div class="pdf-box" style="padding:10px 12px;">
-        <div style="font-size:15px; font-weight:bold; margin-bottom:6px;">Terms &amp; Conditions:</div>
-        {% for term in terms %}
-        <div style="font-size:15px; line-height:1.8;">{{ loop.index }}. {{ term }}</div>
-        {% endfor %}
-      </div>
-    </td>
-  </tr>
+  <div class="estimate-section pdf-allow-break">
+    <div class="pdf-box" style="padding:10px 12px;">
+      <div style="font-size:15px; font-weight:bold; margin-bottom:6px;">Terms &amp; Conditions:</div>
+      {% for term in terms %}
+      <div style="font-size:15px; line-height:1.8;">{{ loop.index }}. {{ term }}</div>
+      {% endfor %}
+    </div>
+  </div>
 
-  <!-- ROW 7: BANK DETAILS + SIGNATURE -->
-  <tr class="bank-sign-row">
-    <td colspan="2" style="padding:0;">
-      <table width="100%" class="pdf-box-accent" style="border-collapse:collapse;">
-        <tr>
-          <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; border-right:2px solid #4a4f70;">
-            Bank Details:
-          </td>
-          <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70;">
-            For {{ company.name }}:
-          </td>
-        </tr>
-        <tr>
-          <td style="vertical-align:top; padding:8px 10px; border-right:2px solid #4a4f70;">
-            <table width="100%" style="border-collapse:collapse;">
-              <tr>
-                <td style="width:110px; vertical-align:top; padding-right:10px;">
-                  {% if bank.qr_image_base64 %}
-                  <img src="data:image/png;base64,{{ bank.qr_image_base64 }}" style="width:100px; height:100px;" alt="" />
-                  {% else %}
-                  <div style="width:100px; height:100px; border:2px solid #ccc; font-size:11px; text-align:center; padding-top:40px;">QR Code</div>
-                  {% endif %}
-                </td>
-                <td style="vertical-align:top;">
-                  <div style="font-size:15px; font-weight:bold;">{{ bank.account_holder }}</div>
-                  <div style="font-size:14px;">Bank: {{ bank.bank_name or '' }}</div>
-                  <div style="font-size:14px;">A/C No.: {{ bank.account_number }}</div>
-                  <div style="font-size:14px;">IFSC: {{ bank.ifsc }}</div>
-                  <div style="font-size:14px;">Branch: {{ bank.branch }}</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-          <td style="vertical-align:top; padding:10px 12px; text-align:center; min-height:130px;">
-            <div style="min-height:70px;"></div>
-            <div style="font-size:15px; font-weight:bold;">Authorized Signatory</div>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
+  <div class="estimate-section">
+    <table width="100%" class="pdf-box-accent" style="border-collapse:collapse;">
+      <tr class="bank-sign-row">
+        <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70; border-right:2px solid #4a4f70;">
+          Bank Details:
+        </td>
+        <td style="width:50%; padding:6px 10px; font-size:15px; font-weight:bold; border-bottom:2px solid #4a4f70;">
+          For {{ company.name }}:
+        </td>
+      </tr>
+      <tr class="bank-sign-row">
+        <td style="vertical-align:top; padding:8px 10px; border-right:2px solid #4a4f70;">
+          <table width="100%" style="border-collapse:collapse;">
+            <tr>
+              <td style="width:110px; vertical-align:top; padding-right:10px;">
+                {% if bank.qr_image_base64 %}
+                <img src="data:image/png;base64,{{ bank.qr_image_base64 }}" style="width:100px; height:100px;" alt="" />
+                {% else %}
+                <div style="width:100px; height:100px; border:2px solid #ccc; font-size:11px; text-align:center; padding-top:40px;">QR Code</div>
+                {% endif %}
+              </td>
+              <td style="vertical-align:top;">
+                <div style="font-size:15px; font-weight:bold;">{{ bank.account_holder }}</div>
+                <div style="font-size:14px;">Bank: {{ bank.bank_name or '' }}</div>
+                <div style="font-size:14px;">A/C No.: {{ bank.account_number }}</div>
+                <div style="font-size:14px;">IFSC: {{ bank.ifsc }}</div>
+                <div style="font-size:14px;">Branch: {{ bank.branch }}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+        <td style="vertical-align:top; padding:10px 12px; text-align:center; min-height:130px;">
+          <div style="min-height:70px;"></div>
+          <div style="font-size:15px; font-weight:bold;">Authorized Signatory</div>
+        </td>
+      </tr>
+    </table>
+  </div>
 
-</table>
-<!-- END WRAPPER TABLE -->
+</div>
 </body>
 </html>

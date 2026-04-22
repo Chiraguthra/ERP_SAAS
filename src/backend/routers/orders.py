@@ -39,6 +39,7 @@ class OrderCreate(BaseModel):
     termsOfDelivery: Optional[str] = None
     contactNumber: Optional[str] = None
     assignedTo: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 def _sync_order_dispatch_status(order: models.Order):
@@ -151,6 +152,8 @@ def _order_to_response(o):
     ]:
         v = getattr(o, attr, None)
         out[key] = (v.strip() if v and isinstance(v, str) else v) or None
+    rmk = getattr(o, "remarks", None)
+    out["remarks"] = (rmk.strip() if rmk and isinstance(rmk, str) else rmk) or None
     out["deliveryNoteDate"] = _parse_date(getattr(o, "delivery_note_date", None))
     return out
 
@@ -278,6 +281,7 @@ def create_order(order: OrderCreate, db: Session = Depends(get_db), current_user
         terms_of_delivery=_s(order.termsOfDelivery),
         contact_number=_s(order.contactNumber),
         assigned_to=assignee,
+        remarks=_s(order.remarks),
     )
     try:
         db.add(db_order)
@@ -338,6 +342,7 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
             ("terms_of_delivery", "termsOfDelivery"),
             ("contact_number", "contactNumber"),
             ("assigned_to", "assignedTo"),
+            ("remarks", "remarks"),
         ]:
             _set_order_str(db_order, attr, key, payload)
         if "deliveryNoteDate" in payload:

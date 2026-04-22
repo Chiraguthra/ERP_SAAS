@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/currency";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ORDER_STATUSES, getStatusLabel } from "@/lib/orderStatus";
@@ -55,6 +56,7 @@ export default function OrderDetail() {
   const [destinationInput, setDestinationInput] = useState("");
   const [termsOfDeliveryInput, setTermsOfDeliveryInput] = useState("");
   const [assignedToInput, setAssignedToInput] = useState("");
+  const [remarksInput, setRemarksInput] = useState("");
   const [freightInput, setFreightInput] = useState("");
   const [adjustmentsInput, setAdjustmentsInput] = useState("");
   const [cgstPercentInput, setCgstPercentInput] = useState("");
@@ -80,6 +82,7 @@ export default function OrderDetail() {
     setDestinationInput((o.destination as string) ?? "");
     setTermsOfDeliveryInput((o.termsOfDelivery as string) ?? "");
     setAssignedToInput((o.assignedTo as string) ?? "");
+    setRemarksInput((o.remarks as string) ?? "");
     const ext = order as unknown as { freightCharges?: number; adjustments?: number; cgstPercent?: number | null; sgstPercent?: number | null; igstPercent?: number | null };
     setFreightInput(ext.freightCharges != null ? String(ext.freightCharges) : "");
     setAdjustmentsInput(ext.adjustments != null ? String(ext.adjustments) : "");
@@ -120,6 +123,7 @@ export default function OrderDetail() {
       destination: destinationInput.trim() || null,
       termsOfDelivery: termsOfDeliveryInput.trim() || null,
       assignedTo: assignedToInput.trim() || null,
+      remarks: remarksInput.trim() || null,
     };
     if (isPendingOrder) {
       payload.freightCharges = parseFloat(freightInput) || 0;
@@ -231,6 +235,7 @@ export default function OrderDetail() {
       { label: "Delivery Note Date", value: o.deliveryNoteDate ? String(o.deliveryNoteDate).slice(0, 10) : null },
       { label: "Destination", value: o.destination },
       { label: "Terms of Delivery", value: o.termsOfDelivery },
+      { label: "Remarks", value: o.remarks },
     ].filter((r) => r.value != null && String(r.value).trim() !== "");
 
     const referenceSectionHtml =
@@ -431,6 +436,7 @@ export default function OrderDetail() {
             { label: "Delivery Note Date", value: o.deliveryNoteDate ? String(o.deliveryNoteDate).slice(0, 10) : null },
             { label: "Destination", value: o.destination },
             { label: "Terms of Delivery", value: o.termsOfDelivery },
+            { label: "Remarks", value: o.remarks },
           ].filter((r) => r.value != null && String(r.value).trim() !== "");
           if (refs.length === 0) return null;
           return (
@@ -750,7 +756,7 @@ export default function OrderDetail() {
               <CardHeader>
                 <CardTitle>Order details</CardTitle>
                 <p className="text-xs text-muted-foreground font-normal">
-                  Reference &amp; delivery fields can be edited for any order status. Items and charges are editable only when order is pending.
+                  Reference, delivery, and remarks can be edited for any order status. Items and charges are editable only when order is pending.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -833,6 +839,17 @@ export default function OrderDetail() {
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Terms of Delivery</label>
                   <Input value={termsOfDeliveryInput} onChange={(e) => setTermsOfDeliveryInput(e.target.value)} disabled={isUpdatingOrder} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Remarks</label>
+                  <Textarea
+                    value={remarksInput}
+                    onChange={(e) => setRemarksInput(e.target.value)}
+                    placeholder="Internal notes"
+                    disabled={isUpdatingOrder}
+                    rows={4}
+                    className="resize-y min-h-[88px]"
+                  />
                 </div>
                 <Button onClick={handleSaveOrderDetails} disabled={isUpdatingOrder} className="w-full">
                   {isUpdatingOrder && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

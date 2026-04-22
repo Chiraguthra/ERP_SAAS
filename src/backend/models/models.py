@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Numeric, DateTime, Boolean, Float, Date, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, Numeric, DateTime, Boolean, Float, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..db.database import Base
@@ -83,6 +83,7 @@ class Order(Base):
     terms_of_delivery = Column(String, nullable=True)
     contact_number = Column(String, nullable=True)  # order-specific contact phone
     assigned_to = Column(String, nullable=True)  # staff name / login responsible for the order
+    remarks = Column(Text, nullable=True)
 
     customer = relationship("Customer")
     items = relationship("OrderItem", back_populates="order")

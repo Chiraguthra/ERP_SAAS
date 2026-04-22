@@ -244,6 +244,16 @@ for col_name, col_type in (
     except Exception:
         pass  # Column already exists
 
+for col_name, col_type in (
+    [("remarks", "TEXT")] if is_sqlite else [("remarks", "TEXT")]
+):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}"))
+            conn.commit()
+    except Exception:
+        pass  # Column already exists
+
 # Add logistics.quantity column if missing
 try:
     with engine.connect() as conn:
