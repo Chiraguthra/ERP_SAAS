@@ -32,6 +32,23 @@ def _pdf_safe(text: str) -> str:
     return text or ""
 
 
+def _quotation_bank_wrapped_lines(
+    bank_details: Optional[str],
+    bank_w: float,
+    font_name: str,
+    body_font: int,
+) -> list[str]:
+    """Lines to draw inside the bank details box (account details only; GSTIN is in the page header)."""
+    out: list[str] = []
+    for raw in (bank_details or "").splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        for w in simpleSplit(_pdf_safe(s), font_name, body_font, bank_w):
+            out.append(w)
+    return out
+
+
 def _resolve_pdf_fonts() -> tuple[str, str]:
     """
     Register and return unicode-capable font names when available.
@@ -74,6 +91,7 @@ class QuotationLetterBody:
     remarks: Optional[str]
     terms_and_conditions: Optional[str]
     bank_details: Optional[str]
+    gstin: Optional[str]
     seller_name: Optional[str]
     seller_designation: Optional[str]
     seller_company: Optional[str]
@@ -153,8 +171,11 @@ def _quotation_draw_page_header(
     x_right: float,
     ref_line: str,
     dated_line: str,
+    *,
+    company_gstin: Optional[str] = None,
+    show_quotation_title: bool = True,
 ) -> float:
-    """Draw letterhead + Ref/Dated + QUOTATION; return y for body content below."""
+    """Draw letterhead + Ref/Dated + optional company GSTIN; optionally centered QUOTATION (first page only)."""
     y = height
     if top_reader:
         top_w, top_h = top_reader.getSize()
@@ -163,12 +184,28 @@ def _quotation_draw_page_header(
         c.drawImage(top_reader, 7, y - draw_h, width=draw_w, height=draw_h, mask="auto")
         y = y - draw_h - 20
     c.setFont(font_regular, body_font)
+    c.setFillColor(colors.black)
     c.drawString(x_left, y, ref_line)
     c.drawRightString(x_right, y, dated_line)
     y -= line_height * 1.5
-    c.setFont(font_bold, 15)
-    c.drawCentredString(width / 2, y, "QUOTATION")
-    y -= line_height * 1.2
+    g = (company_gstin or "").strip()
+    if g:
+        c.setFont(font_regular, body_font)
+        c.setFillColor(colors.black)
+        gst_line = _pdf_safe(f"GSTIN: {g}")
+        content_w = x_right - x_left
+        for wrapped in simpleSplit(gst_line, font_regular, body_font, content_w):
+            c.drawString(x_left, y, wrapped)
+            y -= line_height * 1.05
+        y -= line_height * 0.25
+    if show_quotation_title:
+        c.setFont(font_bold, 15)
+        c.setFillColor(colors.black)
+        c.drawCentredString(width / 2, y, "QUOTATION")
+        y -= line_height * 1.2
+    else:
+        # Continuation pages: extra space under Ref/Dated before body/table (letterhead feels tight otherwise).
+        y -= line_height * 1.35
     return y
 
 
@@ -187,6 +224,7 @@ def _quotation_new_content_page(
     x_right: float,
     ref_line: str,
     dated_line: str,
+    company_gstin: Optional[str] = None,
 ) -> float:
     """Footer on current page, new page, repeat header; return y for continued body."""
     _quotation_draw_page_footer(c, width, bottom_reader, footer_height)
@@ -204,6 +242,8 @@ def _quotation_new_content_page(
         x_right,
         ref_line,
         dated_line,
+        company_gstin=company_gstin,
+        show_quotation_title=False,
     )
 
 
@@ -226,6 +266,7 @@ def _quotation_ensure_space(
     x_right: float,
     ref_line: str,
     dated_line: str,
+    company_gstin: Optional[str] = None,
 ) -> float:
     """Start a new page (with footer+header) if the next line would fall below bottom_y."""
     if y - step < bottom_y:
@@ -244,6 +285,7 @@ def _quotation_ensure_space(
             x_right,
             ref_line,
             dated_line,
+            company_gstin,
         )
     return y
 
@@ -268,6 +310,7 @@ def _quotation_draw_flowing_table(
     x_right: float,
     ref_line: str,
     dated_line: str,
+    company_gstin: Optional[str] = None,
 ) -> float:
     """Draw a ReportLab Table across pages; return final y below the table."""
     y = y_start
@@ -292,17 +335,22 @@ def _quotation_draw_flowing_table(
                 x_right,
                 ref_line,
                 dated_line,
+                company_gstin,
             )
             avail = y - bottom_y
         _, th_need = remaining.wrapOn(c, table_width, 10**6)
         if th_need <= avail:
             remaining.drawOn(c, x_left, y - th_need)
+            c.setFont(font_regular, body_font)
+            c.setFillColor(colors.black)
             return y - th_need - 20
         parts = remaining.split(table_width, avail)
         if parts:
             chunk = parts[0]
             _, ch = chunk.wrapOn(c, table_width, avail)
             chunk.drawOn(c, x_left, y - ch)
+            c.setFont(font_regular, body_font)
+            c.setFillColor(colors.black)
             y -= ch + 14
             remaining = parts[1] if len(parts) > 1 else None
             continue
@@ -321,6 +369,7 @@ def _quotation_draw_flowing_table(
             x_right,
             ref_line,
             dated_line,
+            company_gstin,
         )
         avail = y - bottom_y
         parts = remaining.split(table_width, avail)
@@ -328,12 +377,18 @@ def _quotation_draw_flowing_table(
             chunk = parts[0]
             _, ch = chunk.wrapOn(c, table_width, avail)
             chunk.drawOn(c, x_left, y - ch)
+            c.setFont(font_regular, body_font)
+            c.setFillColor(colors.black)
             y -= ch + 14
             remaining = parts[1] if len(parts) > 1 else None
         else:
             _, ch = remaining.wrapOn(c, table_width, avail)
             remaining.drawOn(c, x_left, y - min(ch, avail))
+            c.setFont(font_regular, body_font)
+            c.setFillColor(colors.black)
             return y - min(ch, avail) - 20
+    c.setFont(font_regular, body_font)
+    c.setFillColor(colors.black)
     return y
 
 
@@ -384,6 +439,7 @@ def get_quotation_letter_defaults(
         "remarks": d.remarks or "",
         "terms_and_conditions": d.terms_and_conditions or "",
         "bank_details": d.bank_details or "",
+        "gstin": d.gstin or "",
         "seller_name": d.seller_name or "",
         "seller_designation": d.seller_designation or "",
         "seller_company": d.seller_company or "",
@@ -398,6 +454,8 @@ def update_quotation_letter_defaults(
     current_user: models.User = Depends(get_current_user),
 ):
     d = _get_or_create_defaults(db)
+    if "bank_gstin" in body and "gstin" not in body:
+        body = {**body, "gstin": body["bank_gstin"]}
     for field in [
         "buyer_name",
         "buyer_address",
@@ -406,6 +464,7 @@ def update_quotation_letter_defaults(
         "remarks",
         "terms_and_conditions",
         "bank_details",
+        "gstin",
         "seller_name",
         "seller_designation",
         "seller_company",
@@ -455,6 +514,12 @@ def create_quotation_letter(
             return val
         return getattr(defaults, field) or ""
 
+    def pick_gstin() -> str:
+        v = (body.get("gstin") or body.get("bank_gstin") or "").strip()
+        if v:
+            return v
+        return getattr(defaults, "gstin", None) or ""
+
     q = models.QuotationLetter(
         buyer_name=pick("buyer_name"),
         buyer_address=pick("buyer_address"),
@@ -463,6 +528,7 @@ def create_quotation_letter(
         remarks=pick("remarks"),
         terms_and_conditions=pick("terms_and_conditions"),
         bank_details=pick("bank_details"),
+        gstin=pick_gstin() or None,
         seller_name=pick("seller_name"),
         seller_designation=pick("seller_designation"),
         seller_company=pick("seller_company"),
@@ -497,6 +563,7 @@ def get_quotation_letter(
         "remarks": q.remarks,
         "terms_and_conditions": q.terms_and_conditions,
         "bank_details": q.bank_details,
+        "gstin": q.gstin or "",
         "seller_name": q.seller_name,
         "seller_designation": q.seller_designation,
         "seller_company": q.seller_company,
@@ -516,6 +583,9 @@ def update_quotation_letter(
     if not q:
         raise HTTPException(status_code=404, detail="Quotation not found")
 
+    if "bank_gstin" in body and "gstin" not in body:
+        body = {**body, "gstin": body["bank_gstin"]}
+
     # Only keys present in body are updated. JSON null or "" clears the column; omitted keys are left unchanged.
     for field in [
         "buyer_name",
@@ -525,6 +595,7 @@ def update_quotation_letter(
         "remarks",
         "terms_and_conditions",
         "bank_details",
+        "gstin",
         "seller_name",
         "seller_designation",
         "seller_company",
@@ -570,6 +641,7 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
     ref_no = f"{q.id:03d}"
     ref_line = f"Ref: SLTMS/ {fy}/ {ref_no}"
     dated_line = f"Dated: {today.strftime('%d-%m-%Y')}"
+    company_gstin = (q.gstin or "").strip() or None
 
     y = _quotation_draw_page_header(
         c,
@@ -584,6 +656,7 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         x_right,
         ref_line,
         dated_line,
+        company_gstin=company_gstin,
     )
 
     content_width = x_right - x_left
@@ -609,6 +682,7 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
             x_right=x_right,
             ref_line=ref_line,
             dated_line=dated_line,
+            company_gstin=company_gstin,
         )
 
     # ── TO BLOCK ──
@@ -700,6 +774,7 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         x_right=x_right,
         ref_line=ref_line,
         dated_line=dated_line,
+        company_gstin=company_gstin,
     )
 
     # ── REMARKS ──
@@ -768,22 +843,44 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         c.drawString(x_left, y, q.seller_phone)
         y -= line_height
 
-    # ── BANK DETAILS (flowing; no fixed-height box so long details are not clipped) ──
-    if q.bank_details:
-        y -= line_height * 0.6
-        y = es(y, line_height)
-        c.setFont(font_bold, body_font)
-        c.drawString(x_left, y, "Bank Details:")
-        y -= line_height * 0.9
+    # ── BANK DETAILS (bordered box; account lines only — GSTIN is in header) ──
+    bank_txt = (q.bank_details or "").strip()
+    if bank_txt:
         bank_left = x_left + 8
         bank_w = width - 120
+        wrapped_bank = _quotation_bank_wrapped_lines(q.bank_details, bank_w, font_regular, body_font)
+        # In PDF coords, drawString y is the baseline; pad_top keeps ascenders inside the rect stroke.
+        pad_top = max(16.0, body_font * 1.45)
+        pad_bottom = max(12.0, tight * 0.35)
+        after_title_gap = line_height * 0.4
+        body_h = len(wrapped_bank) * tight if wrapped_bank else 0
+        total_h = pad_top + line_height + after_title_gap + body_h + pad_bottom
+        y -= line_height * 0.6
+        y = es(y, total_h + 16)
+        box_left = x_left - 5
+        box_w = (x_right - x_left) + 10
+        # box_top = upper edge (larger y); rect(x, y, w, h) uses lower-left (x, y) with height h upward.
+        box_top = y - 6
+        box_bottom = box_top - total_h
+        c.saveState()
+        c.setFillColor(colors.white)
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(1)
+        c.rect(box_left, box_bottom, box_w, total_h, stroke=1, fill=1)
+        c.restoreState()
+        c.setFillColor(colors.black)
+
+        y_text = box_top - pad_top
+        c.setFont(font_bold, body_font)
+        c.drawString(bank_left, y_text, "Bank Details:")
+        y_text -= line_height + after_title_gap
         c.setFont(font_regular, body_font)
-        for line in q.bank_details.splitlines():
-            if line.strip():
-                for wrapped_line in simpleSplit(_pdf_safe(line.strip()), font_regular, body_font, bank_w):
-                    y = es(y, tight)
-                    c.drawString(bank_left, y, wrapped_line)
-                    y -= tight
+        for wline in wrapped_bank:
+            c.drawString(bank_left, y_text, wline)
+            y_text -= tight
+        y = y_text - 10
+        c.setFont(font_regular, body_font)
+        c.setFillColor(colors.black)
 
     _quotation_draw_page_footer(c, width, bottom_reader, footer_height)
     c.save()

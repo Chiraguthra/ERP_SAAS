@@ -39,6 +39,7 @@ type QuotationDefaults = {
   remarks: string;
   terms_and_conditions: string;
   bank_details: string;
+  gstin: string;
   seller_name: string;
   seller_designation: string;
   seller_company: string;
@@ -86,6 +87,10 @@ type PiProductRow = {
 };
 
 const PI_PIPE_HEADER = "Sr|Item|Qty|Uom|UnitPrice|GST%";
+
+/** Shown when saving quotation defaults have no bank block text yet. */
+const QUOTATION_BANK_DETAILS_PLACEHOLDER =
+  "Beneficiary Name:\nAccount Number:\nIFSC Code:\nBranch:";
 
 type ProductRow = {
   srNo: string;
@@ -215,6 +220,7 @@ export default function Quotations() {
   const [remarks, setRemarks] = useState("");
   const [terms, setTerms] = useState("");
   const [bankDetails, setBankDetails] = useState("");
+  const [gstin, setGstin] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerDesignation, setSellerDesignation] = useState("");
   const [sellerCompany, setSellerCompany] = useState("");
@@ -338,6 +344,7 @@ export default function Quotations() {
         remarks,
         terms_and_conditions: terms,
         bank_details: bankDetails,
+        gstin,
         seller_name: sellerName,
         seller_designation: sellerDesignation,
         seller_company: sellerCompany,
@@ -400,6 +407,7 @@ export default function Quotations() {
         remarks,
         terms_and_conditions: terms,
         bank_details: bankDetails,
+        gstin,
         seller_name: sellerName,
         seller_designation: sellerDesignation,
         seller_company: sellerCompany,
@@ -604,6 +612,8 @@ export default function Quotations() {
         remarks?: string | null;
         terms_and_conditions?: string | null;
         bank_details?: string | null;
+        gstin?: string | null;
+        bank_gstin?: string | null;
         seller_name?: string | null;
         seller_designation?: string | null;
         seller_company?: string | null;
@@ -619,6 +629,7 @@ export default function Quotations() {
       setRemarks(q.remarks ?? "");
       setTerms(q.terms_and_conditions ?? "");
       setBankDetails(q.bank_details ?? "");
+      setGstin(q.gstin?.trim() || q.bank_gstin?.trim() || "");
       setSellerName(q.seller_name ?? "");
       setSellerDesignation(q.seller_designation ?? "");
       setSellerCompany(q.seller_company ?? "");
@@ -710,6 +721,7 @@ export default function Quotations() {
       remarks: remarks || d?.remarks || "",
       terms_and_conditions: terms || d?.terms_and_conditions || "",
       bank_details: bankDetails || d?.bank_details || "",
+      gstin: gstin || d?.gstin || "",
       seller_name: sellerName || d?.seller_name || "",
       seller_designation: sellerDesignation || d?.seller_designation || "",
       seller_company: sellerCompany || d?.seller_company || "",
@@ -724,6 +736,7 @@ export default function Quotations() {
     remarks,
     terms,
     bankDetails,
+    gstin,
     sellerName,
     sellerDesignation,
     sellerCompany,
@@ -831,6 +844,7 @@ export default function Quotations() {
     setRemarks("");
     setTerms("");
     setBankDetails("");
+    setGstin("");
     setSellerName("");
     setSellerDesignation("");
     setSellerCompany("");
@@ -1102,6 +1116,15 @@ export default function Quotations() {
                             onBlur={(e) => (defaults.subject = e.target.value)}
                           />
                         </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-sm font-medium">GSTIN</label>
+                          <Input
+                            defaultValue={defaults.gstin ?? ""}
+                            placeholder="Company GSTIN (shown below Ref. on PDF)"
+                            onBlur={(e) => (defaults.gstin = e.target.value)}
+                            className="font-mono max-w-md"
+                          />
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Buyer address</label>
@@ -1141,6 +1164,7 @@ export default function Quotations() {
                           defaultValue={defaults.bank_details}
                           rows={4}
                           onBlur={(e) => (defaults.bank_details = e.target.value)}
+                          placeholder={QUOTATION_BANK_DETAILS_PLACEHOLDER}
                         />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1356,6 +1380,15 @@ export default function Quotations() {
                     placeholder={defaults?.subject || "Subject"}
                   />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">GSTIN</label>
+                  <Input
+                    value={gstin}
+                    onChange={(e) => setGstin(e.target.value)}
+                    placeholder={defaults?.gstin?.trim() ? defaults.gstin : "Company GSTIN (below Ref. on PDF)"}
+                    className="font-mono max-w-md border-2 border-border focus-visible:border-primary"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Buyer address</label>
@@ -1488,8 +1521,13 @@ export default function Quotations() {
                 <Textarea
                   value={bankDetails}
                   onChange={(e) => setBankDetails(e.target.value)}
-                  placeholder={defaults?.bank_details || ""}
+                  placeholder={
+                    defaults?.bank_details?.trim()
+                      ? defaults.bank_details
+                      : QUOTATION_BANK_DETAILS_PLACEHOLDER
+                  }
                   rows={4}
+                  className="border-2 border-border focus-visible:border-primary"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1607,6 +1645,11 @@ export default function Quotations() {
                       )}/ 001`}</span>
                       <span>{`Dated: ${new Date().toLocaleDateString("en-GB")}`}</span>
                     </div>
+                    {effective.gstin ? (
+                      <p className="mt-2 text-[14px] font-mono">
+                        GSTIN: {effective.gstin}
+                      </p>
+                    ) : null}
                     <p className="mt-2 text-center font-bold tracking-wide text-[16px]">QUOTATION</p>
 
                     <p className="mt-5">To,</p>
@@ -1666,12 +1709,12 @@ export default function Quotations() {
                     <p className="font-bold">{effective.seller_company}</p>
                     <p>{effective.seller_phone}</p>
 
-                    {effective.bank_details && (
-                      <div className="mt-4 border border-black rounded-sm p-3">
+                    {effective.bank_details ? (
+                      <div className="mt-4 border-2 border-black rounded-sm p-3 bg-white">
                         <p className="font-bold">Bank Details:</p>
-                        <div className="whitespace-pre-line">{effective.bank_details}</div>
+                        <div className="whitespace-pre-line mt-1">{effective.bank_details}</div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   <img
                     src="/quotation-bottom.png"
