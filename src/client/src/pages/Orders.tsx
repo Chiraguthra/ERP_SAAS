@@ -459,9 +459,10 @@ export default function Orders() {
                         <label className="text-xs text-muted-foreground">Qty</label>
                         <Input 
                           type="number" 
-                          min="1" 
+                          min="0" 
+                          step="any"
                           value={item.quantity} 
-                          onChange={(e) => handleItemChange(index, "quantity", parseInt(e.target.value) || 0)} 
+                          onChange={(e) => handleItemChange(index, "quantity", parseFloat(e.target.value) || 0)} 
                         />
                       </div>
                       <Button 

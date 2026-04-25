@@ -593,10 +593,11 @@ export default function OrderDetail() {
                             <td className="px-3 py-2 text-right whitespace-nowrap">
                               <Input
                                 type="number"
-                                min={1}
+                                min={0}
+                                step="any"
                                 className="w-20 h-9 text-right"
                                 value={row.quantity}
-                                onChange={(e) => setEditableItem(index, "quantity", parseInt(e.target.value, 10) || 0)}
+                                onChange={(e) => setEditableItem(index, "quantity", parseFloat(e.target.value) || 0)}
                               />
                             </td>
                             <td className="px-3 py-2 text-right whitespace-nowrap">

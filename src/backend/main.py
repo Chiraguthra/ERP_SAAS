@@ -324,6 +324,53 @@ try:
 except Exception:
     pass  # Column already exists
 
+# order_items.quantity: allow decimals (2.52 etc.) — was INTEGER in older DBs
+try:
+    if is_sqlite:
+        with engine.begin() as conn:
+            inf = conn.execute(text("PRAGMA table_info(order_items)")).fetchall()
+            qty = next((r for r in inf if len(r) > 1 and r[1] == "quantity"), None)
+            if qty:
+                typ = (qty[2] or "").upper()
+                if "INT" in typ:
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE order_items__q (
+                                id INTEGER NOT NULL PRIMARY KEY,
+                                order_id INTEGER NOT NULL,
+                                product_id INTEGER NOT NULL,
+                                quantity REAL NOT NULL,
+                                price NUMERIC NOT NULL,
+                                dispatched INTEGER NOT NULL DEFAULT 0,
+                                FOREIGN KEY (order_id) REFERENCES orders (id),
+                                FOREIGN KEY (product_id) REFERENCES products (id)
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO order_items__q (id, order_id, product_id, quantity, price, dispatched)
+                            SELECT id, order_id, product_id, CAST(quantity AS REAL), price, COALESCE(dispatched, 0)
+                            FROM order_items
+                            """
+                        )
+                    )
+                    conn.execute(text("DROP TABLE order_items"))
+                    conn.execute(text("ALTER TABLE order_items__q RENAME TO order_items"))
+    else:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE order_items ALTER COLUMN quantity TYPE DOUBLE PRECISION "
+                    "USING quantity::double precision"
+                )
+            )
+except Exception:
+    pass  # Table missing, already REAL/DOUBLE, or not applicable
+
 app = FastAPI(title="Retail Management API")
 
 allowed_origins = [

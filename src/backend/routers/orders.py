@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Union
 from datetime import datetime
 import math
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from ..db.database import get_db
 from ..models import models
 from .auth import get_current_user
@@ -14,7 +14,7 @@ router = APIRouter()
 
 class OrderItemBase(BaseModel):
     productId: int
-    quantity: int
+    quantity: float = Field(gt=0)
     price: Optional[float] = None  # rate per unit; if omitted, use product price
 
 class OrderCreate(BaseModel):
@@ -105,7 +105,7 @@ def _order_item_to_response(item):
         "id": item.id,
         "orderId": item.order_id,
         "productId": item.product_id,
-        "quantity": int(item.quantity) if item.quantity is not None else 0,
+        "quantity": float(item.quantity) if item.quantity is not None else 0.0,
         "price": price_val,
         "dispatched": bool(getattr(item, "dispatched", False)),
         "product": product_payload,
@@ -377,7 +377,7 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
                 if not isinstance(row, dict):
                     continue
                 pid = row.get("productId")
-                qty = int(row.get("quantity") or 0)
+                qty = _safe_float(row.get("quantity"))
                 if not pid or qty <= 0:
                     continue
                 prod = db.query(models.Product).filter(models.Product.id == pid).first()
@@ -409,7 +409,7 @@ def update_order(id: int, payload: dict, db: Session = Depends(get_db), current_
             db_order.adjustments = sum_before_adj - rounded_total
         # Recompute total when only financial fields change (no items replacement) - pending only
         elif is_pending and any(k in payload for k in ("freightCharges", "adjustments", "cgstPercent", "sgstPercent", "igstPercent")):
-            subtotal = sum(_safe_float(i.price) * int(i.quantity or 0) for i in db_order.items)
+            subtotal = sum(_safe_float(i.price) * _safe_float(i.quantity or 0) for i in db_order.items)
             freight = _safe_float(db_order.freight_charges)
             adj = _safe_float(db_order.adjustments)
             cgst_pct = _safe_float(db_order.cgst_percent) if db_order.cgst_percent is not None else 0
