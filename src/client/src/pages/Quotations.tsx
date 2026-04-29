@@ -470,24 +470,30 @@ export default function Quotations() {
     },
   });
 
+  /** Merge form state with estimate defaults (same logic as preview `effectivePi`) so saves match what users see. */
+  const getProformaSavePayload = () => {
+    const d = estimateDefaultsQuery.data;
+    return {
+      buyer_name: piBuyerName || d?.buyer_name || "",
+      buyer_address: piBuyerAddress || d?.buyer_address || "",
+      buyer_gstin: piBuyerGstin || d?.buyer_gstin || "",
+      buyer_phone: piBuyerPhone || d?.buyer_phone || "",
+      place_of_supply: piPlaceOfSupply || d?.place_of_supply || "",
+      subject: piSubject || d?.subject || "",
+      product_details: buildPiProductDetails(piProductRows, d?.product_details),
+      remarks: piRemarks || d?.remarks || "",
+      terms_and_conditions: piTerms || d?.terms_and_conditions || "",
+      bank_details: piBankDetails || d?.bank_details || "",
+      seller_name: piSellerName || d?.seller_name || "",
+      seller_designation: piSellerDesignation || d?.seller_designation || "",
+      seller_company: piSellerCompany || d?.seller_company || "",
+      seller_phone: piSellerPhone || d?.seller_phone || "",
+    };
+  };
+
   const createProformaMutation = useMutation({
     mutationFn: async (vars: { downloadPdf: boolean }) => {
-      const payload = {
-        buyer_name: piBuyerName,
-        buyer_address: piBuyerAddress,
-        buyer_gstin: piBuyerGstin,
-        buyer_phone: piBuyerPhone,
-        place_of_supply: piPlaceOfSupply,
-        subject: piSubject,
-        product_details: buildPiProductDetails(piProductRows, estimateDefaultsQuery.data?.product_details),
-        remarks: piRemarks,
-        terms_and_conditions: piTerms,
-        bank_details: piBankDetails,
-        seller_name: piSellerName,
-        seller_designation: piSellerDesignation,
-        seller_company: piSellerCompany,
-        seller_phone: piSellerPhone,
-      };
+      const payload = getProformaSavePayload();
       const r = await authFetch("/api/proforma-invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -537,22 +543,7 @@ export default function Quotations() {
   const updateProformaMutation = useMutation({
     mutationFn: async (vars: { downloadPdf: boolean }) => {
       if (!editingProformaId) throw new Error("No estimate selected for update");
-      const payload = {
-        buyer_name: piBuyerName,
-        buyer_address: piBuyerAddress,
-        buyer_gstin: piBuyerGstin,
-        buyer_phone: piBuyerPhone,
-        place_of_supply: piPlaceOfSupply,
-        subject: piSubject,
-        product_details: buildPiProductDetails(piProductRows, estimateDefaultsQuery.data?.product_details),
-        remarks: piRemarks,
-        terms_and_conditions: piTerms,
-        bank_details: piBankDetails,
-        seller_name: piSellerName,
-        seller_designation: piSellerDesignation,
-        seller_company: piSellerCompany,
-        seller_phone: piSellerPhone,
-      };
+      const payload = getProformaSavePayload();
       const r = await authFetch(`/api/proforma-invoices/${editingProformaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

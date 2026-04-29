@@ -739,6 +739,7 @@ def update_proforma_invoice(
     if not p:
         raise HTTPException(status_code=404, detail="Estimate not found")
 
+    d = _get_or_create_estimate_defaults(db)
     for field in [
         "buyer_name",
         "buyer_address",
@@ -758,11 +759,21 @@ def update_proforma_invoice(
         if field not in body:
             continue
         raw = body[field]
+        if field == "product_details":
+            if raw is None:
+                setattr(p, field, (d.product_details or "") or None)
+                continue
+            s = raw.strip() if isinstance(raw, str) else str(raw).strip()
+            setattr(p, field, (s or (d.product_details or "")) or None)
+            continue
         if raw is None:
-            setattr(p, field, None)
+            setattr(p, field, (getattr(d, field) or "") or None)
             continue
         s = raw.strip() if isinstance(raw, str) else str(raw).strip()
-        setattr(p, field, s or None)
+        if not s:
+            setattr(p, field, (getattr(d, field) or "") or None)
+        else:
+            setattr(p, field, s)
 
     db.commit()
     db.refresh(p)

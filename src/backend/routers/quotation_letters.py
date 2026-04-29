@@ -2,6 +2,7 @@ from datetime import datetime, date
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
+from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,8 +14,9 @@ from .auth import get_current_user
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader, simpleSplit
-from reportlab.platypus import Table, TableStyle
+from reportlab.platypus import Paragraph, Table, TableStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -22,7 +24,24 @@ from reportlab.pdfgen import canvas
 
 router = APIRouter()
 
-# Images are stored inside backend/assets so they are available inside the Docker image
+_quotation_para_style_cache: dict[tuple[str, int], ParagraphStyle] = {}
+
+
+def _quotation_item_paragraph_style(font_name: str, font_size: int) -> ParagraphStyle:
+    key = (font_name, font_size)
+    if key not in _quotation_para_style_cache:
+        safe_name = f"QuotCell_{font_name}_{font_size}".replace("-", "_").replace(" ", "_")
+        _quotation_para_style_cache[key] = ParagraphStyle(
+            name=safe_name,
+            fontName=font_name,
+            fontSize=font_size,
+            leading=font_size * 1.2,
+            splitLongWords=1,
+            wordWrap="LTR",
+        )
+    return _quotation_para_style_cache[key]
+
+
 TOP_IMAGE_PATH = Path(__file__).resolve().parents[1] / "assets" / "quotation-top.png"
 BOTTOM_IMAGE_PATH = Path(__file__).resolve().parents[1] / "assets" / "quotation-bottom.png"
 
@@ -133,6 +152,32 @@ def _parse_product_rows(text: str) -> list[list[str]]:
     if len(rows) == 1:
         rows.append(["1.", "", "", ""])
     return rows
+
+
+def _quotation_table_cell_paragraph(text: str, font_name: str, font_size: int) -> Paragraph:
+    """Table cell with proper line-wrap (long item names must not bleed into the Rate column)."""
+    t = _pdf_safe(text or "")
+    safe = escape(t).replace("\n", "<br/>")
+    style = _quotation_item_paragraph_style(font_name, font_size)
+    return Paragraph(safe, style)
+
+
+def _quotation_product_table_flowables(
+    product_rows: list[list[str]],
+    font_regular: str,
+    font_bold: str,
+    table_font: int,
+) -> list[list[Paragraph]]:
+    """Build table data using Paragraphs so the Item column wraps within its cell width."""
+    out: list[list[Paragraph]] = []
+    for r_idx, row in enumerate(product_rows):
+        font = font_bold if r_idx == 0 else font_regular
+        cells: list[Paragraph] = []
+        for c_idx in range(4):
+            cell = row[c_idx] if c_idx < len(row) else ""
+            cells.append(_quotation_table_cell_paragraph(str(cell), font, table_font))
+        out.append(cells)
+    return out
 
 
 def _image_reader(path: Path) -> ImageReader | None:
@@ -736,18 +781,26 @@ def _render_pdf(q: models.QuotationLetter) -> bytes:
         y -= line_height * 1.05
     y -= line_height * 0.1
 
-    # ── PRODUCT DETAILS TABLE (may span pages) ──
+    # ── PRODUCT DETAILS TABLE (may span pages); Paragraph cells so Item text wraps ──
     product_rows = _parse_product_rows(q.product_details or "")
-    table = Table(product_rows, colWidths=[55, 240, 70, 105], repeatRows=1)
+    tw_table = content_width
+    w0 = max(48.0, tw_table * 0.11)
+    rem = tw_table - w0
+    w1 = rem * 0.52
+    w2 = rem * 0.22
+    w3 = rem - w1 - w2
+    pl_data = _quotation_product_table_flowables(product_rows, font_regular, font_bold, table_font)
+    table = Table(pl_data, colWidths=[w0, w1, w2, w3], repeatRows=1)
     table.setStyle(
         TableStyle(
             [
-                ("FONTNAME", (0, 0), (-1, 0), font_bold),
-                ("FONTNAME", (0, 1), (-1, -1), font_regular),
-                ("FONTSIZE", (0, 0), (-1, -1), table_font),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                ("ALIGN", (3, 0), (3, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
                 ("GRID", (0, 0), (-1, -1), 0.6, colors.black),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ("LEFTPADDING", (0, 0), (-1, -1), 5),
